@@ -114,12 +114,13 @@ function Diagram({ source, notify }: { source: string; notify: (text: string, ki
   </div>;
 }
 
-export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOpenSession, onComposeContext, onAskSidechat, agentIds }: {
+export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOpenSession, onComposeContext, onAskSidechat, agentIds, isSuspended }: {
   chat: UseChat; listRef: RefObject<VirtuosoHandle | null>; onAtBottomChange: (isAtBottom: boolean) => void; notify: (text: string, kind?: 'success' | 'error') => void; onZoom: (src: string) => void;
   onOpenSession: (sessionId: string) => void;
   onComposeContext: (context: { messageId: string; text: string }) => void;
   onAskSidechat: (context: { messageId: string; text: string }) => void;
   agentIds?: string[];
+  isSuspended?: boolean;
 }) {
   const { messages, pendingPrompt, liveAssistant, isRunning } = chat;
   const [isNavigatingTurns, setNavigatingTurns] = useState(false);
@@ -165,7 +166,7 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   }, [pendingPrompt, chat.queuedMessages.length, listRef]);
   const results = new Map(messages.flatMap(message => message.role === 'toolResult' && message.toolCallId ? [[message.toolCallId, message] as const] : []));
   const callIds = new Set(messages.flatMap(message => message.blocks.flatMap(block => block.type === 'toolCall' && block.id ? [block.id] : [])));
-  const groups: ({ kind: 'message'; message: ChatMessage } | { kind: 'activity'; messages: ChatMessage[] } | { kind: 'pending' | 'live' | 'working' | 'paused' } | { kind: 'queue'; index: number })[] = [];
+  const groups: ({ kind: 'message'; message: ChatMessage } | { kind: 'activity'; messages: ChatMessage[] } | { kind: 'pending' | 'live' | 'working' | 'waiting' | 'paused' } | { kind: 'queue'; index: number })[] = [];
   messages.forEach(message => {
     if (message.role === 'user') { groups.push({ kind: 'message', message }); return; }
     if (message.role === 'toolResult' && message.toolCallId && callIds.has(message.toolCallId)) return;
@@ -179,7 +180,7 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   });
   if (pendingPrompt !== undefined) groups.push({ kind: 'pending' });
   if (liveAssistant?.text) groups.push({ kind: 'live' });
-  else if (isRunning) groups.push({ kind: 'working' });
+  else if (isRunning) groups.push({ kind: isSuspended ? 'waiting' : 'working' });
   chat.queuedMessages.forEach((_, index) => groups.push({ kind: 'queue', index }));
   if (chat.isQueuePaused) groups.push({ kind: 'paused' });
   return <div ref={containerRef} id="messages" {...stylex.props(styles.messages)} {...handlers} onClickCapture={event => { if (event.target instanceof Element && event.target.closest('summary')) isFollowingRef.current = false; }} onPointerDownCapture={event => { if (event.target instanceof Element && event.target.id === 'chatScroll') isFollowingRef.current = false; }} onWheelCapture={() => { isFollowingRef.current = false; }} onTouchMoveCapture={() => { isFollowingRef.current = false; }} onKeyDownCapture={event => { if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) isFollowingRef.current = false; }}><Virtuoso ref={listRef} data={groups} components={messageListComponents} initialTopMostItemIndex={initialLocation} initialItemCount={8} defaultItemHeight={96} increaseViewportBy={240} atBottomThreshold={2} atBottomStateChange={isAtBottom => { if (isAtBottom) isFollowingRef.current = true; onAtBottomChange(isAtBottom); }} followOutput={false} totalListHeightChanged={followLatest} style={{ height: '100%', visibility: isFontReady ? 'visible' : 'hidden' }} computeItemKey={(_, group) => group.kind === 'message' ? group.message.responseId ?? 'message-' + group.message.seq : group.kind === 'activity' ? 'activity-' + group.messages[0].seq : group.kind === 'queue' ? chat.queuedMessages[group.index].id : group.kind === 'live' ? liveAssistant?.responseId ?? liveAssistant?.streamId ?? 'live' : group.kind} itemContent={(index, group) => <div {...stylex.props(styles.row, group.kind === 'activity' && styles.activityRow, index === 0 && styles.firstRow)}>{renderGroup(group)}</div>} />{menu}{isNavigatingTurns && <Dialog title="Jump to turn" onClose={() => setNavigatingTurns(false)}><div {...stylex.props(styles.turnList)}>{groups.flatMap((group, index) => group.kind === 'message' && group.message.role === 'user' ? [<button key={group.message.seq} type="button" {...stylex.props(styles.turnButton)} onClick={() => { isFollowingRef.current = false; setNavigatingTurns(false); requestAnimationFrame(() => listRef.current?.scrollToIndex({ index, align: 'start' })); }}>{messageText(group.message).replace(attachmentPrompt, '') || 'Attachment'}</button>] : [])}</div>{!messages.some(message => message.role === 'user') && <DialogDescription>No turns in this conversation.</DialogDescription>}</Dialog>}</div>;
@@ -197,6 +198,7 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
     if (group.kind === 'pending') return <article aria-label="Sending message" {...stylex.props(styles.message, styles.user)}>{chat.pendingAttachments.map(attachment => attachment.mime.startsWith('image/') ? <img key={attachment.id} src={attachment.url} alt={attachment.name} {...stylex.props(styles.image)} /> : <a key={attachment.id} href={attachment.url} target="_blank" rel="noopener noreferrer" {...stylex.props(styles.fileAttachment)}><FileText size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>{attachment.name}</span></a>)}<div {...stylex.props(styles.userText)}>{pendingPrompt}</div></article>;
     if (group.kind === 'live' && liveAssistant) return <article data-message-id={liveAssistant.streamId} data-message-role="assistant" data-selectable={selectableId === liveAssistant.streamId} tabIndex={0} aria-haspopup="menu" aria-keyshortcuts="Shift+F10" aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)}><ResponseMarkdown text={formatCitations({ text: liveAssistant.text, sources, isStreaming: !liveAssistant.done })} sessionId={chat.sessionId} isStreaming={!liveAssistant.done} notify={notify} onZoom={onZoom} onAction={liveAssistant.done ? onDraftAction : undefined} /></article>;
     if (group.kind === 'working') return <div role="status" aria-label="Working" {...stylex.props(styles.working)}><motion.span {...stylex.props(styles.pulse)} animate={{ opacity: shouldReduceMotion ? 1 : [.4, 1, .4] }} transition={{ duration: 1.2, repeat: shouldReduceMotion ? 0 : Infinity }} />Working…</div>;
+    if (group.kind === 'waiting') return <div role="status" aria-label="Waiting for your answer" {...stylex.props(styles.working)}>Waiting for your answer…</div>;
     if (group.kind === 'queue') {
       const message = chat.queuedMessages[group.index];
       return <QueuedBubble message={message} index={group.index} chat={chat} isEditing={editingId === message.id} isAnotherEditing={hasEditor && editingId !== message.id} editText={editText} onEditTextChange={setEditText} onEditingChange={(isEditing, text) => { if (isEditing) setEditText(text ?? message.prompt); setEditingId(isEditing ? message.id : undefined); }} />;

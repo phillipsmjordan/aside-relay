@@ -13,6 +13,7 @@ import { AsideIcon, ICON_STROKE } from './ui';
 
 const ACTIVE_POLL_INTERVAL_MS = 1_500;
 const IDLE_POLL_INTERVAL_MS = 5_000;
+const RESOLVED_SUSPENSION_GRACE_MS = 30_000;
 
 type WorkspaceQuestion = {
   id: string;
@@ -77,6 +78,7 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
   const [isAlwaysAllowed, setAlwaysAllowed] = useState(false);
   const suspensionRevisionRef = useRef(0);
   const resolvingRevisionRef = useRef<number | undefined>(undefined);
+  const resolvedSuspensionsRef = useRef<Map<string, number>>(new Map());
   const sessionId = chat.sessionId;
   const sessionIdRef = useRef(sessionId);
   const publishState = useEffectEvent((next: SessionWorkspaceState | undefined) => onStateChange?.(next));
@@ -86,11 +88,13 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
     sessionIdRef.current = sessionId;
     suspensionRevisionRef.current += 1;
     resolvingRevisionRef.current = undefined;
+    resolvedSuspensionsRef.current.clear();
     setResolving(false);
     return () => {
       sessionIdRef.current = undefined;
       suspensionRevisionRef.current += 1;
       resolvingRevisionRef.current = undefined;
+      resolvedSuspensionsRef.current.clear();
     };
   }, [sessionId]);
 
@@ -128,7 +132,8 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
       const suspensionRevision = suspensionRevisionRef.current;
       try {
         const response = await chat.request(`/api/native/sessions/${encodeURIComponent(sessionId!)}?brief=true`, { signal: controller.signal });
-        const next = parseWorkspaceState(await response.json(), sessionId!);
+        const parsed = parseWorkspaceState(await response.json(), sessionId!);
+        const next = { ...parsed, suspension: suppressResolvedSuspension(resolvedSuspensionsRef.current, parsed.suspension) };
         if (!isActive) return;
         if (suspensionRevision !== suspensionRevisionRef.current) {
           timer = setTimeout(refresh, ACTIVE_POLL_INTERVAL_MS);
@@ -161,7 +166,7 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
   if (!sessionId || !state || (!state.suspension && !hasToolbar)) return undefined;
 
   async function resolve(response: Record<string, unknown>) {
-    await runSuspensionCommand({ command: 'resolve-suspension', response }, 'Response sent.');
+    await runSuspensionCommand({ command: 'resolve-suspension', response }, 'Answer sent - the agent is resuming.');
   }
 
   async function cancelQuestion() {
@@ -186,6 +191,8 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
         body: JSON.stringify(body),
       });
       if (!isCurrentCommand()) return;
+      if (suspension.toolCallId) resolvedSuspensionsRef.current.set(suspension.toolCallId, Date.now());
+      setPanel(undefined);
       notify(successMessage, 'success');
     } catch {
       if (!isCurrentCommand()) return;
@@ -300,6 +307,12 @@ function parseWorkspaceState(value: unknown, sessionId: string): SessionWorkspac
     todos: Array.isArray(value.todos) ? value.todos.flatMap(parseTodo) : [],
     outputs: Array.isArray(value.outputs) ? value.outputs.flatMap(parseOutput) : [],
   };
+}
+
+function suppressResolvedSuspension(map: Map<string, number>, suspension: WorkspaceSuspension | undefined, now = Date.now()): WorkspaceSuspension | undefined {
+  if (!suspension || !suspension.toolCallId) return suspension;
+  for (const [id, resolvedAt] of map) if (now - resolvedAt >= RESOLVED_SUSPENSION_GRACE_MS) map.delete(id);
+  return map.has(suspension.toolCallId) ? undefined : suspension;
 }
 
 function parseSuspension(value: Record<string, unknown> | undefined): WorkspaceSuspension | undefined {
