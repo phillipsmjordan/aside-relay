@@ -12,6 +12,7 @@ import type { ChatSession, Toast, RunOptions } from './types';
 import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
 import { Composer } from './Composer';
+import { ProjectPicker } from './ProjectPicker';
 import { Button } from './Button';
 import { Dialog, DialogActions, DialogDescription } from './Dialog';
 import { BrowserLive } from './BrowserLive';
@@ -304,7 +305,7 @@ export function App() {
       {chat.authError && <div role="alert" {...stylex.props(styles.notice)}><span>Connect to load your conversations.</span><button {...stylex.props(styles.noticeAction)} onClick={() => openPanel('settings')}>Settings</button></div>}
       {chat.isReady && !chat.isConnected && !chat.authError && <div role="status" {...stylex.props(styles.connectionIndicator)}><span className="sr-only">Reconnecting…</span><motion.span aria-hidden="true" {...stylex.props(styles.connectionSpinner)} animate={shouldReduceMotion ? undefined : { rotate: 360 }} transition={{ duration: .8, repeat: Infinity, ease: 'linear' }} /></div>}
       <div {...stylex.props(styles.scrollRegion)}>
-        {chat.isOpening || !chat.isReady ? <ConversationLoading /> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<ConversationLoading />}><Messages key={chat.sessionId} chat={chat} listRef={listRef} onAtBottomChange={changeAtBottom} notify={notify} onZoom={setZoom} onOpenSession={openSession} onComposeContext={composeContext} onAskSidechat={askSidechat} agentIds={workspaceState?.sessionId === chat.sessionId ? workspaceState?.agents.map(agent => agent.id) : undefined} isSuspended={workspaceState?.sessionId === chat.sessionId && !!workspaceState?.suspension} /></Suspense> : <div {...stylex.props(styles.empty)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1></div>}
+        {chat.isOpening || !chat.isReady ? <ConversationLoading /> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<ConversationLoading />}><Messages key={chat.sessionId} chat={chat} listRef={listRef} onAtBottomChange={changeAtBottom} notify={notify} onZoom={setZoom} onOpenSession={openSession} onComposeContext={composeContext} onAskSidechat={askSidechat} agentIds={workspaceState?.sessionId === chat.sessionId ? workspaceState?.agents.map(agent => agent.id) : undefined} isSuspended={workspaceState?.sessionId === chat.sessionId && !!workspaceState?.suspension} /></Suspense> : <div {...stylex.props(styles.empty)}><div {...stylex.props(styles.emptyContent)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1>{!chat.sessionId && <ProjectPicker chat={chat} value={runOptions?.projectId} onChange={projectId => setRunOptions(current => ({ ...current, projectId }))} />}</div></div>}
         <AnimatePresence>{canJump && !chat.isOpening && <motion.button key="jump" aria-label="Scroll to latest message" {...stylex.props(styles.jump, ui.glass)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, y: 6 }} transition={{ duration: .16 }} whileTap={{ scale: .9 }} onClick={() => listRef.current?.scrollToIndex(latestMessage)}><ArrowDown size={19} strokeWidth={ICON_STROKE} /></motion.button>}</AnimatePresence>
         {chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <BrowserLive key={chat.sessionId} sessionId={chat.sessionId} request={chat.request} isBrowserOpen={panel === 'browser'} isVisible={!panel && !isDrawer && !menuSession && !deleteTarget && !zoom} onOpen={targetId => openPanel('browser', targetId)} />}
       </div>
@@ -400,6 +401,7 @@ const styles = stylex.create({
   subtitle: { color: tokens.muted, fontSize: '.75rem', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   scrollRegion: { position: 'relative', flex: 1, minHeight: 0, minWidth: 0 },
   empty: { display: 'flex', height: '100%', flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 'calc(var(--composer-height) + 70px)', textAlign: 'center' },
+  emptyContent: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
   emptyTitle: { fontSize: '1.6875rem', lineHeight: 1.3, letterSpacing: '-.7px', fontWeight: 600, margin: 0, '@media (max-width: 375px)': { fontSize: '1.5rem' } },
   conversationLoading: { display: 'flex', height: '100%', alignItems: 'flex-end', padding: '20px max(20px, env(safe-area-inset-right)) calc(var(--composer-height) + 28px) max(20px, env(safe-area-inset-left))', minWidth: 0 },
   messageSkeleton: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 736, margin: '0 auto' },
