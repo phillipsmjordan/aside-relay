@@ -1,5 +1,28 @@
 # aside-relay
 
+> **Changes in this fork** (on top of upstream [mym0404/aside-relay](https://github.com/mym0404/aside-relay) `main` at 054063b)
+>
+> **New chats and projects**
+> - Pick a project when starting a new chat (picker on the empty New chat screen).
+> - The sidebar's New chat follows the current project filter; the header shows the chat's project, and the last-used project is remembered.
+>
+> **Context and compaction**
+> - Context meter next to the send button: tap it for context used, Claude/Codex/Kimi/Grok subscription limits, and a Compact button.
+> - Compact a conversation from the chat menu ("Compact context") or by typing `/compact` (optional instructions after it).
+>
+> **Voice**
+> - Read aloud button on the last reply of each turn.
+> - Hands-free voice mode (headphones icon): reads replies, asks "Want the rest?", listens for your answer, confirms before sending, and can answer questions and approvals by voice.
+> - Voice mode stays on across chats, announces other chats that finish, fail or ask a question, and resumes (paused) after a reload.
+> - Settings, Read aloud: pick a voice and speed per device, with a Test voice button. Automatic uses the phone's own text-to-speech voice in its language (for example en-US), not the first English voice found.
+>
+> **Fixes**
+> - Respond dialog closes and the question disappears right after you answer it.
+> - Works with the current Aside CLI: reads its JSON `session list` output and passes `--yes` to `session delete`, so deleting chats and running status work again.
+>
+> **Tools**
+> - `scripts/update.sh`: pull upstream, rebuild the web app, restart the bridge and push to this fork.
+
 Use [Aside](https://aside.dev) from your phone or browser. This self-hosted web app
 connects to the Aside app and CLI on your Mac, with live conversations, browser
 previews, interactive HTML visuals, and completion notifications.
