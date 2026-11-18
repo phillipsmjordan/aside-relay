@@ -74,9 +74,12 @@ export function findVoice(voices: SpeechSynthesisVoice[], id?: string) {
 let lastRequested = '';
 export function lastRequestedVoice() { return lastRequested; }
 
+/**
+ * The voice the user picked, or undefined for Automatic. Automatic sets only the language and lets the phone's
+ * text-to-speech settings choose the voice, so a voice chosen in Android (for example a male one) is respected.
+ */
 function pickVoice() {
-  const voices = window.speechSynthesis.getVoices();
-  return findVoice(voices, loadVoicePrefs().voiceURI) ?? automaticVoice(voices);
+  return findVoice(window.speechSynthesis.getVoices(), loadVoicePrefs().voiceURI);
 }
 
 /** Speaks text. Resolves true when it finished, false when it was stopped or replaced. */
@@ -90,7 +93,7 @@ export function speak(key: string, text: string, { isMarkdown = true } = {}): Pr
   setSpeakerState({ key });
   const voice = pickVoice();
   const { rate } = loadVoicePrefs();
-  lastRequested = voice ? `${voice.name} · ${voice.lang}${voice.localService ? '' : ' · online'}` : `system default · ${language()}`;
+  lastRequested = voice ? `${voice.name} · ${voice.lang}${voice.localService ? '' : ' · online'}` : `your phone's default voice · ${language()}`;
   return new Promise(resolve => {
     let index = 0;
     const finish = (completed: boolean) => {
