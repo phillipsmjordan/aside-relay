@@ -20,7 +20,7 @@ type SidebarSession = ChatSession & { archived?: boolean; projectId?: string; st
 type SidebarRow = { kind: 'heading'; group: string } | { kind: 'session'; session: SidebarSession } | { kind: 'more' };
 
 export function Sidebar({ chat, isDrawer, onClose, onNew, onNewIncognito, onOpen, onSettings, onBrowser, onMenu }: {
-  chat: UseChat; isDrawer?: boolean; onClose?: () => void; onNew: () => void; onNewIncognito?: () => void; onOpen: (id: string) => void; onSettings: () => void; onBrowser: () => void; onMenu: (target: SessionMenuTarget) => void;
+  chat: UseChat; isDrawer?: boolean; onClose?: () => void; onNew: (projectId?: string) => void; onNewIncognito?: () => void; onOpen: (id: string) => void; onSettings: () => void; onBrowser: () => void; onMenu: (target: SessionMenuTarget) => void;
 }) {
   const shouldReduceMotion = useReducedMotion();
   const [isShowingAll, setShowingAll] = useState(false);
@@ -180,7 +180,7 @@ export function Sidebar({ chat, isDrawer, onClose, onNew, onNewIncognito, onOpen
     event.preventDefault(); onMenu(target);
   }}>
     <div {...stylex.props(styles.top)}><span {...stylex.props(styles.brand)}><img src="/icons/mark.svg" width={24} height={24} alt="" aria-hidden="true" />{APP_NAME}</span>{isDrawer && <IconButton label="Close conversations" onClick={onClose}><X size={22} strokeWidth={ICON_STROKE} /></IconButton>}</div>
-    <div {...stylex.props(styles.newChatRow)}><button {...stylex.props(styles.newChat)} onClick={onNew}><Plus size={20} strokeWidth={ICON_STROKE} />New chat</button>{onNewIncognito && <IconButton label="New incognito chat" onClick={onNewIncognito}><EyeOff size={19} strokeWidth={ICON_STROKE} /></IconButton>}</div>
+    <div {...stylex.props(styles.newChatRow)}><button {...stylex.props(styles.newChat)} onClick={() => onNew(projectId || undefined)}><Plus size={20} strokeWidth={ICON_STROKE} />New chat</button>{onNewIncognito && <IconButton label="New incognito chat" onClick={onNewIncognito}><EyeOff size={19} strokeWidth={ICON_STROKE} /></IconButton>}</div>
     <div {...stylex.props(styles.search)}><Search size={17} strokeWidth={ICON_STROKE} /><input aria-label="Search conversations" placeholder="Search" value={chat.searchQuery} onChange={event => chat.setSearchQuery(event.target.value)} {...stylex.props(styles.searchInput)} />{chat.searchQuery && <button {...stylex.props(styles.clear)} aria-label="Clear search" onClick={() => chat.setSearchQuery('')}><X size={16} /></button>}</div>
     {isShowingAll && <div {...stylex.props(styles.controls)}>
       <div {...stylex.props(styles.segment)}><button type="button" aria-pressed={view === 'active'} {...stylex.props(styles.control, view === 'active' && styles.activeControl)} onClick={() => setView('active')}>Chats</button><button type="button" aria-pressed={view === 'archived'} {...stylex.props(styles.control, view === 'archived' && styles.activeControl)} onClick={() => setView('archived')}><span>Archive</span></button></div>

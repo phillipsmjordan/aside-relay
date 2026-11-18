@@ -1,24 +1,12 @@
-import { useEffect, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { FolderOpen } from 'lucide-react';
-import { parseProjects } from './responses';
 import { tokens } from './tokens.stylex';
 import { ICON_STROKE } from './ui';
-import type { UseChat } from './types';
 
-type Project = { id: string; name: string };
+export type Project = { id: string; name: string };
 
 /** Lets a brand-new chat start inside a project instead of moving it afterwards. */
-export function ProjectPicker({ chat, value, onChange }: { chat: UseChat; value?: string; onChange: (projectId?: string) => void }) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void chat.request('/api/native/projects', { cache: 'no-store', signal: controller.signal })
-      .then(response => response.json())
-      .then(result => { if (!controller.signal.aborted) setProjects(parseProjects(result).filter(project => !project.archivedAt)); })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [chat.request]);
+export function ProjectPicker({ projects, value, onChange }: { projects: Project[]; value?: string; onChange: (projectId?: string) => void }) {
   if (!projects.length) return null;
   return <label {...stylex.props(styles.picker)}>
     <FolderOpen size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />

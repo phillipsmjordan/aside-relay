@@ -12,7 +12,8 @@ import type { ChatSession, Toast, RunOptions } from './types';
 import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
 import { Composer } from './Composer';
-import { ProjectPicker } from './ProjectPicker';
+import { ProjectPicker, type Project } from './ProjectPicker';
+import { parseProjects } from './responses';
 import { Button } from './Button';
 import { Dialog, DialogActions, DialogDescription } from './Dialog';
 import { BrowserLive } from './BrowserLive';
@@ -29,6 +30,9 @@ const Workspace = lazy(() => import('./Workspace').then(module => ({ default: mo
 const Artifacts = lazy(() => import('./Artifacts').then(module => ({ default: module.Artifacts })));
 const ZOOM_GESTURE_EVENTS = ['gesturestart', 'gesturechange'];
 const TOAST_STACK_LIMIT = 3;
+const LAST_PROJECT_KEY = 'aside-relay:last-project';
+function loadLastProject() { try { return localStorage.getItem(LAST_PROJECT_KEY) || undefined; } catch { return undefined; } }
+function saveLastProject(projectId?: string) { try { if (projectId) localStorage.setItem(LAST_PROJECT_KEY, projectId); else localStorage.removeItem(LAST_PROJECT_KEY); } catch { /* storage unavailable */ } }
 const TOAST_DURATION = 3_000;
 const TOAST_ERROR_DURATION = 6_000;
 const TOAST_HIDDEN = { opacity: 0, y: -16, scale: .96 };
@@ -53,7 +57,8 @@ export function App() {
   const [renameTarget, setRenameTarget] = useState<Pick<ChatSession, 'id' | 'title'>>();
   const [panel, setPanel] = useState<Panel | undefined>(() => panelsByPath[location.pathname]);
   const [filesSessionId, setFilesSessionId] = useState<string | undefined>(() => new URLSearchParams(location.search).get('session') ?? undefined);
-  const [runOptions, setRunOptions] = useState<RunOptions>();
+  const [runOptions, setRunOptions] = useState<RunOptions | undefined>(() => { const projectId = loadLastProject(); return projectId ? { projectId } : undefined; });
+  const [projects, setProjects] = useState<Project[]>([]);
   const [workspaceState, setWorkspaceState] = useState<SessionWorkspaceState>();
   const [sidechat, setSidechat] = useState<{ messageId: string; text: string }>();
   const [sidechatPrompt, setSidechatPrompt] = useState('');
@@ -72,6 +77,23 @@ export function App() {
   const effectiveFilesSessionId = filesSessionId ?? chat.sessionId;
   const sessionTitle = chat.sessions.find(session => session.id === chat.sessionId)?.title || (chat.sessionId ? 'Conversation' : 'New chat');
   const toasts = [...chat.toasts, ...localToasts].sort((first, second) => first.createdAt - second.createdAt);
+
+  useEffect(() => {
+    if (!chat.isReady || chat.authError) return;
+    const controller = new AbortController();
+    void chat.request('/api/native/projects', { cache: 'no-store', signal: controller.signal }).then(response => response.json())
+      .then(value => { if (!controller.signal.aborted) setProjects(parseProjects(value).filter(project => !project.archivedAt)); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [chat.request, chat.isReady, chat.authError, chat.sessionId]);
+  useEffect(() => {
+    if (!projects.length || !runOptions?.projectId || chat.sessionId) return;
+    if (!projects.some(project => project.id === runOptions.projectId)) setRunOptions(current => current && { ...current, projectId: undefined });
+  }, [projects, runOptions?.projectId, chat.sessionId]);
+  const activeProjectId = chat.sessionId ? chat.sessions.find(session => session.id === chat.sessionId)?.projectId : runOptions?.projectId;
+  const projectName = projects.find(project => project.id === activeProjectId)?.name;
+  const subtitleBase = projectName ? `${projectName} · ${APP_NAME}` : APP_NAME;
+  function pickProject(projectId?: string) { saveLastProject(projectId); setRunOptions(current => ({ ...current, projectId })); }
 
   function changeAtBottom(isAtBottom: boolean) { setCanJump(!isAtBottom); }
 
@@ -103,7 +125,7 @@ export function App() {
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, [themeMode, appearance]);
-  function newChat() { chat.newChat(); setRunOptions(undefined); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); changeAtBottom(true); }
+  function newChat(projectId?: string) { chat.newChat(); setRunOptions(projectId ?? loadLastProject() ? { projectId: projectId ?? loadLastProject() } : undefined); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); changeAtBottom(true); }
   function newIncognitoChat() { newChat(); setRunOptions({ mode: 'incognito' }); }
   function openSession(id: string) { void chat.openSession(id); setRunOptions(undefined); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); changeAtBottom(true); }
   function openPanel(next: Panel, targetId?: string) { const sessionId = targetId ?? chat.sessionId; const path = next === 'browser' ? '/tabs' : next === 'files' && sessionId ? '/files?session=' + encodeURIComponent(sessionId) : '/' + next; setBrowserTarget(next === 'browser' ? targetId : undefined); if (next === 'files') setFilesSessionId(sessionId); setPanel(next); setDrawer(false); if (panel) history.replaceState({ panel: next }, '', path); else history.pushState({ panel: next }, '', path); }
@@ -299,13 +321,13 @@ export function App() {
     <main aria-label="Chat" {...stylex.props(styles.main)}>
       <div className="sr-only" role="status" aria-atomic="true">{announcement}</div>
       <header ref={headerRef} id="header" {...stylex.props(styles.header)}>
-        <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><Menu size={24} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{runOptions?.mode === 'incognito' && !chat.sessionId ? 'Incognito' : workspaceState && workspaceState.sessionId === chat.sessionId && workspaceState.suspension ? workspaceState.suspension.title : chat.isRunning ? `${APP_NAME} · Working…` : workspaceState?.sessionId === chat.sessionId && workspaceState?.status === 'errored' ? `${APP_NAME} · Task failed` : APP_NAME}</span></div></div>
-        <div {...stylex.props(ui.glass, styles.headerActions)}><IconButton label="New chat" style={{ height: 40 }} onClick={newChat}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
+        <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><Menu size={24} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{runOptions?.mode === 'incognito' && !chat.sessionId ? 'Incognito' : workspaceState && workspaceState.sessionId === chat.sessionId && workspaceState.suspension ? workspaceState.suspension.title : chat.isRunning ? `${subtitleBase} · Working…` : workspaceState?.sessionId === chat.sessionId && workspaceState?.status === 'errored' ? `${subtitleBase} · Task failed` : subtitleBase}</span></div></div>
+        <div {...stylex.props(ui.glass, styles.headerActions)}><IconButton label="New chat" style={{ height: 40 }} onClick={() => newChat()}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
       </header>
       {chat.authError && <div role="alert" {...stylex.props(styles.notice)}><span>Connect to load your conversations.</span><button {...stylex.props(styles.noticeAction)} onClick={() => openPanel('settings')}>Settings</button></div>}
       {chat.isReady && !chat.isConnected && !chat.authError && <div role="status" {...stylex.props(styles.connectionIndicator)}><span className="sr-only">Reconnecting…</span><motion.span aria-hidden="true" {...stylex.props(styles.connectionSpinner)} animate={shouldReduceMotion ? undefined : { rotate: 360 }} transition={{ duration: .8, repeat: Infinity, ease: 'linear' }} /></div>}
       <div {...stylex.props(styles.scrollRegion)}>
-        {chat.isOpening || !chat.isReady ? <ConversationLoading /> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<ConversationLoading />}><Messages key={chat.sessionId} chat={chat} listRef={listRef} onAtBottomChange={changeAtBottom} notify={notify} onZoom={setZoom} onOpenSession={openSession} onComposeContext={composeContext} onAskSidechat={askSidechat} agentIds={workspaceState?.sessionId === chat.sessionId ? workspaceState?.agents.map(agent => agent.id) : undefined} isSuspended={workspaceState?.sessionId === chat.sessionId && !!workspaceState?.suspension} /></Suspense> : <div {...stylex.props(styles.empty)}><div {...stylex.props(styles.emptyContent)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1>{!chat.sessionId && <ProjectPicker chat={chat} value={runOptions?.projectId} onChange={projectId => setRunOptions(current => ({ ...current, projectId }))} />}</div></div>}
+        {chat.isOpening || !chat.isReady ? <ConversationLoading /> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<ConversationLoading />}><Messages key={chat.sessionId} chat={chat} listRef={listRef} onAtBottomChange={changeAtBottom} notify={notify} onZoom={setZoom} onOpenSession={openSession} onComposeContext={composeContext} onAskSidechat={askSidechat} agentIds={workspaceState?.sessionId === chat.sessionId ? workspaceState?.agents.map(agent => agent.id) : undefined} isSuspended={workspaceState?.sessionId === chat.sessionId && !!workspaceState?.suspension} /></Suspense> : <div {...stylex.props(styles.empty)}><div {...stylex.props(styles.emptyContent)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1>{!chat.sessionId && <ProjectPicker projects={projects} value={runOptions?.projectId} onChange={pickProject} />}</div></div>}
         <AnimatePresence>{canJump && !chat.isOpening && <motion.button key="jump" aria-label="Scroll to latest message" {...stylex.props(styles.jump, ui.glass)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, y: 6 }} transition={{ duration: .16 }} whileTap={{ scale: .9 }} onClick={() => listRef.current?.scrollToIndex(latestMessage)}><ArrowDown size={19} strokeWidth={ICON_STROKE} /></motion.button>}</AnimatePresence>
         {chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <BrowserLive key={chat.sessionId} sessionId={chat.sessionId} request={chat.request} isBrowserOpen={panel === 'browser'} isVisible={!panel && !isDrawer && !menuSession && !deleteTarget && !zoom} onOpen={targetId => openPanel('browser', targetId)} />}
       </div>
