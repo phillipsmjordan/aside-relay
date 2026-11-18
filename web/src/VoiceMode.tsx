@@ -7,6 +7,7 @@ import { Button } from './Button';
 import { IconButton, ICON_STROKE } from './ui';
 import { tokens } from './tokens.stylex';
 import { matchOption, matchVerdict, parseVoiceIntent, speakableText, splitHead, suspensionSpeech } from './speech';
+import { ApiError } from './chat';
 import { canListen, canSpeak, listen, speak, stopSpeaking, useSpeakingKey, type ListenResult } from './voice';
 
 export const isVoiceSupported = canSpeak && canListen;
@@ -293,7 +294,13 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
       window.dispatchEvent(new CustomEvent(SUSPENSION_RESOLVED_EVENT, { detail: { sessionId, toolCallId: current.toolCallId } }));
       notifyRef.current('Answer sent - the agent is resuming.', 'success');
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        handledRef.current.add(current.toolCallId); resolvedRef.current.add(current.toolCallId);
+        window.dispatchEvent(new CustomEvent(SUSPENSION_RESOLVED_EVENT, { detail: { sessionId, toolCallId: current.toolCallId } }));
+        notifyRef.current('That question was already answered.', 'success');
+        return true;
+      }
       notifyRef.current('Could not send the answer. Use Respond on screen.', 'error');
       return false;
     }

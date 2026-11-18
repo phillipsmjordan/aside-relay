@@ -131,7 +131,7 @@ async def get_native_session(session_id: str, brief: bool = Query(False)):
     subagent_state = tool_state.get("subagent") if isinstance(tool_state.get("subagent"), dict) else {}
     return {
         "session": {key: session[key] for key in _SESSION_FIELDS if key in session},
-        "suspension": session.get("suspension"),
+        "suspension": sessions.active_suspension(session),
         "children": children,
         "todos": todo_state.get("todos") if isinstance(todo_state.get("todos"), list) else [],
         "subagents": subagent_state.get("subagents")
@@ -245,9 +245,9 @@ async def command_native_session(session_id: str, payload: dict):
 async def _resolve_suspension(session: dict, payload: dict):
     if set(payload) != {"command", "response"} or not isinstance(payload.get("response"), dict):
         raise HTTPException(400, "Invalid suspension response.")
-    suspension = session.get("suspension")
+    suspension = sessions.active_suspension(session)
     if not isinstance(suspension, dict):
-        raise HTTPException(409, "This conversation is not waiting for a response.")
+        raise HTTPException(409, "This question was already answered.")
     kind = suspension.get("kind")
     response = payload["response"]
     if kind == "approval":
@@ -306,9 +306,10 @@ async def _resolve_suspension(session: dict, payload: dict):
 async def _cancel_question(session: dict, payload: dict):
     if set(payload) != {"command"}:
         raise HTTPException(400, "Invalid question command.")
-    suspension = session.get("suspension")
+    suspension = sessions.active_suspension(session)
     if not isinstance(suspension, dict) or suspension.get("kind") != "ask-user-question":
-        raise HTTPException(409, "This conversation is not waiting for an answer.")
+        # Never interrupt a chat that already moved on: stopping it here would cut off its work.
+        raise HTTPException(409, "This question was already answered.")
     return await _call("sessions.interrupt", {
         "accountId": ACCOUNT_ID,
         "sessionId": session["id"],

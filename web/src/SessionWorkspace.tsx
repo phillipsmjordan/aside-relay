@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex';
 import { AnimatePresence } from 'motion/react';
 import { Check, CheckCircle2, Circle, CircleDot, Files, ListTodo, LoaderCircle, MessageSquareMore } from 'lucide-react';
 import type { UseChat } from './types';
+import { ApiError } from './chat';
 import { Button } from './Button';
 import { Dialog, DialogActions, DialogDescription } from './Dialog';
 import { isRecord } from './responses';
@@ -14,7 +15,6 @@ import { parseContext, type ContextInfo } from './usage';
 
 const ACTIVE_POLL_INTERVAL_MS = 1_500;
 const IDLE_POLL_INTERVAL_MS = 5_000;
-const RESOLVED_SUSPENSION_GRACE_MS = 30_000;
 
 type WorkspaceQuestion = {
   id: string;
@@ -214,8 +214,15 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
       if (suspension.toolCallId) resolvedSuspensionsRef.current.set(suspension.toolCallId, Date.now());
       setPanel(undefined);
       notify(successMessage, 'success');
-    } catch {
+    } catch (error) {
       if (!isCurrentCommand()) return;
+      if (error instanceof ApiError && error.status === 409) {
+        // The agent already has an answer (or has moved on): don't show this question again.
+        if (suspension.toolCallId) resolvedSuspensionsRef.current.set(suspension.toolCallId, Date.now());
+        setPanel(undefined);
+        notify('That question was already answered.', 'success');
+        return;
+      }
       setState(current => current ? { ...current, suspension } : current);
       publishState({ ...optimisticState, suspension });
       notify('Could not send the response. Try again.', 'error');
@@ -304,7 +311,7 @@ function SuspensionPanel({ suspension, answers, customAnswers, customAnswer, isA
       const selected = answers[question.id]?.includes(option.label) ?? false;
       return <label key={option.id} {...stylex.props(styles.option, selected && styles.selectedOption)}><input type={question.allowsMultiple ? 'checkbox' : 'radio'} name={question.id} value={option.id} checked={selected} onChange={() => { onQuestionCustomAnswer(question.id, ''); onAnswer(question.id, question.allowsMultiple ? selected ? (answers[question.id] ?? []).filter(label => label !== option.label) : [...answers[question.id] ?? [], option.label] : [option.label]); }} /><span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>{selected && <Check size={17} strokeWidth={ICON_STROKE} aria-hidden="true" />}</label>;
     })}<label {...stylex.props(styles.label)}>Custom answer<input maxLength={10_000} value={customAnswers[question.id] ?? ''} onChange={event => { onQuestionCustomAnswer(question.id, event.currentTarget.value); if (event.currentTarget.value) onAnswer(question.id, []); }} {...stylex.props(styles.answerInput)} /></label></fieldset>)}</div>
-    <DialogActions><Button disabled={isResolving} onClick={() => void onCancelQuestion()}>Cancel</Button><Button type="submit" variant="primary" disabled={isResolving || !isReady}>Submit</Button></DialogActions>
+    <DialogActions><Button disabled={isResolving} onClick={() => void onCancelQuestion()}>Stop chat</Button><Button type="submit" variant="primary" disabled={isResolving || !isReady}>Submit</Button></DialogActions>
   </form>;
 }
 
@@ -330,9 +337,9 @@ function parseWorkspaceState(value: unknown, sessionId: string): SessionWorkspac
   };
 }
 
-function suppressResolvedSuspension(map: Map<string, number>, suspension: WorkspaceSuspension | undefined, now = Date.now()): WorkspaceSuspension | undefined {
+// A question's toolCallId is never asked twice, so remember answered ones for as long as this chat is open.
+function suppressResolvedSuspension(map: Map<string, number>, suspension: WorkspaceSuspension | undefined): WorkspaceSuspension | undefined {
   if (!suspension || !suspension.toolCallId) return suspension;
-  for (const [id, resolvedAt] of map) if (now - resolvedAt >= RESOLVED_SUSPENSION_GRACE_MS) map.delete(id);
   return map.has(suspension.toolCallId) ? undefined : suspension;
 }
 

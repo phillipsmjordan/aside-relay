@@ -6,6 +6,7 @@ import copy
 from unittest.mock import patch
 
 from daemon import ACCOUNT_ID
+import native_sessions
 
 
 SESSION_ID = support.SESSION_ID
@@ -311,6 +312,7 @@ class NativeSessionContractTests(support.IsolatedBackendTest):
             with self.subTest(kind=kind, request=request):
                 session = {
                     **self.session,
+                    "status": "suspended",
                     "suspension": {
                         "id": "suspension-1",
                         "kind": kind,
@@ -333,6 +335,7 @@ class NativeSessionContractTests(support.IsolatedBackendTest):
     async def test_cancel_question_interrupts_and_invalid_state_does_not_mutate(self):
         waiting = {
             **self.session,
+            "status": "suspended",
             "suspension": {"kind": "ask-user-question", "toolCallId": "tool-1"},
         }
         calls = self.stub({"sessions.get": waiting, "sessions.interrupt": {"status": "interrupted"}})
@@ -354,6 +357,28 @@ class NativeSessionContractTests(support.IsolatedBackendTest):
             )
         self.assertEqual(rejected.status_code, 409)
         self.assertEqual(len(calls), 1)
+
+    async def test_answered_question_left_on_a_running_chat_is_ignored(self):
+        # Aside keeps the last question on the record while the agent works after it was answered.
+        stale = {
+            **self.session,
+            "status": "running",
+            "suspension": {"id": "suspension-1", "kind": "ask-user-question", "toolCallId": "tool-1"},
+        }
+        for command in ({"command": "cancel-question"},
+                        {"command": "resolve-suspension", "response": {"answers": [{"header": "A", "answer": "B"}]}}):
+            with self.subTest(command=command["command"]):
+                calls = self.stub({"sessions.get": stale, "sessions.interrupt": {}, "sessions.resolveSuspension": {}})
+                async with support.api_client() as client:
+                    response = await client.post(f"/api/native/sessions/{SESSION_ID}/command", json=command)
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.json()["detail"], "This question was already answered.")
+                self.assertEqual([call[0] for call in calls], ["sessions.get"], "must not interrupt or resolve")
+        for status, expected in (("running", None), ("interrupted", None), ("suspended", "ask-user-question")):
+            with self.subTest(status=status):
+                record = {**stale, "status": status}
+                found = native_sessions.sessions.active_suspension(record)
+                self.assertEqual(found and found["kind"], expected)
 
     async def test_incognito_requires_empty_conversation(self):
         calls = self.stub({"sessions.get": self.session, "sessions.update": {"incognito": True}})

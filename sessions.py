@@ -32,6 +32,20 @@ _dir_index: dict[str, Path] = {}
 _dir_index_at: float = 0.0
 
 # --------------------------------------------------------------------- 디렉토리
+
+# Aside keeps the last question on the session record while the agent carries on after it was answered.
+# A question only counts while the chat is actually waiting, never while it is running or has stopped.
+NOT_WAITING_STATUSES = frozenset({"running", "idle", "interrupted", "errored"})
+
+
+def active_suspension(record: dict) -> dict | None:
+    suspension = record.get("suspension")
+    if not isinstance(suspension, dict):
+        return None
+    if (record.get("status") or "") in NOT_WAITING_STATUSES:
+        return None
+    return suspension
+
 def session_dir(session_id: str) -> Path | None:
     global _dir_index, _dir_index_at
     hit = _dir_index.get(session_id)
@@ -438,7 +452,7 @@ async def native_session_previews(*, limit: int = 50, cursor: int = 0,
     items = await daemon.call("sessions.listPreviewItems", value)
     decorated = []
     for item in items:
-        suspension = item.get("suspension") if isinstance(item.get("suspension"), dict) else None
+        suspension = active_suspension(item)
         suspension_kind = suspension.get("kind") if suspension else None
         status = item.get("status") or "idle"
         status_label = {
@@ -782,7 +796,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
         s = live.get(sid) or {}
         run = s.get("latestRun") or {}
         usage = run.get("tokenUsage") or {}
-        suspension = s.get("suspension") if isinstance(s.get("suspension"), dict) else None
+        suspension = active_suspension(s)
         suspension_kind = suspension.get("kind") if suspension else None
         status = s.get("status") or "idle"
         status_label = {
