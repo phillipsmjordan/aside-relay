@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import { Archive, ArchiveRestore, Check, Copy, Files, FolderInput, Link, Mail, MailOpen, Pencil, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, Copy, FoldVertical, Files, FolderInput, Link, Mail, MailOpen, Pencil, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
 import type { UseChat } from './types';
 import { parseProjects, parseSessionDetails } from './responses';
 import { PopoverMenu } from './PopoverMenu';
@@ -8,6 +8,7 @@ import { tokens } from './tokens.stylex';
 import { ICON_STROKE, RENAME_CONVERSATION_TITLE, SESSION_CHANGE_EVENT, styles as ui } from './ui';
 import { Button } from './Button';
 import { Dialog, DialogActions, DialogDescription } from './Dialog';
+import { compactSession } from './compact';
 
 export type SessionMenuTarget = { id: string; title: string; anchor: HTMLElement; point?: { x: number; y: number }; archived?: boolean; projectId?: string; unread?: boolean; status?: string };
 type Conversation = { id: string; title: string };
@@ -19,7 +20,7 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles
   notify: (text: string, kind?: 'error' | 'success') => void;
 }) {
   const [details, setDetails] = useState<ReturnType<typeof parseSessionDetails>>();
-  const [dialog, setDialog] = useState<'project'>();
+  const [dialog, setDialog] = useState<'project' | 'compact'>();
   const [isBusy, setBusy] = useState(false);
   const session = chat.sessions.find(session => session.id === target.id);
   const url = new URL('/c/' + encodeURIComponent(target.id), location.origin).href;
@@ -69,6 +70,7 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles
     if (await chat.updateSession(target.id, { isPinned: !isPinned }, { isPinned })) window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
   }
 
+  if (dialog === 'compact') return <CompactDialog sessionId={target.id} chat={chat} notify={notify} onClose={onClose} />;
   if (dialog === 'project') return <MoveConversationDialog sessionId={target.id} currentProjectId={target.projectId} chat={chat} notify={notify} onClose={onClose} />;
 
   return <PopoverMenu anchor={target.anchor} point={target.point} label="Conversation options" onClose={onClose}>
@@ -76,6 +78,7 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles
     <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { void updatePinned(); }}>{isPinned ? <PinOff {...stylex.props(styles.pin)} size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Pin {...stylex.props(styles.pin)} size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{isPinned ? 'Unpin conversation' : 'Pin conversation'}</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); onRename({ id: target.id, title }); }}><Pencil size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Rename</span></button>
     {onFiles && <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); onFiles(target.id); }}><Files size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Files &amp; outputs</span></button>}
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy || ((session?.status ?? target.status ?? details?.status) === 'running' || (target.id === chat.sessionId && chat.isRunning))} onClick={() => { setDialog('compact'); }}><FoldVertical size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Compact context</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { setDialog('project'); }}><FolderInput size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Move to project</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { void mutateNative(isUnread ? '/read' : '/unread', isUnread ? 'Marked as read.' : 'Marked as unread.'); }}>{isUnread ? <MailOpen size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Mail size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{isUnread ? 'Mark as read' : 'Mark as unread'}</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { void mutateNative(target.archived ? '/unarchive' : '/archive', target.archived ? 'Conversation restored.' : 'Conversation archived.'); }}>{target.archived ? <ArchiveRestore size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Archive size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{target.archived ? 'Unarchive' : 'Archive'}</span></button>
@@ -118,6 +121,15 @@ function MoveConversationDialog({ sessionId, currentProjectId, chat, notify, onC
   </Dialog>;
 }
 
+function CompactDialog({ sessionId, chat, notify, onClose }: { sessionId: string; chat: UseChat; notify: (text: string, kind?: 'error' | 'success') => void; onClose: () => void }) {
+  const [instructions, setInstructions] = useState('');
+  return <Dialog title="Compact context" onClose={onClose}>
+    <DialogDescription>Summarize earlier messages so the conversation can keep going with less context. Optionally say what to keep.</DialogDescription>
+    <textarea aria-label="Compaction instructions" placeholder="e.g. keep open decisions and file paths" value={instructions} maxLength={4000} rows={3} {...stylex.props(styles.instructions)} onChange={event => setInstructions(event.target.value)} />
+    <DialogActions><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => { onClose(); void compactSession(chat, sessionId, instructions, notify); }}>Compact</Button></DialogActions>
+  </Dialog>;
+}
+
 function readSnapshotUrl(value: unknown) {
   if (typeof value !== 'object' || value === null) return;
   const result = Reflect.get(value, 'result');
@@ -143,6 +155,7 @@ const styles = stylex.create({
   pin: { color: tokens.primary },
   title: { margin: '4px 12px 8px', fontSize: '0.8125rem', lineHeight: 1.4, color: tokens.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   action: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, width: '100%', padding: '10px 12px', borderWidth: 0, borderRadius: 14, textAlign: 'left', color: tokens.text, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, fontSize: '0.875rem', lineHeight: 1.4 },
+  instructions: { width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.9375rem' },
   projects: { display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 'min(360px, 50dvh)', overflowY: 'auto' },
   project: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', minHeight: 48, padding: '10px 14px', borderWidth: 0, borderRadius: 14, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.text, textAlign: 'left' },
   selectedProject: { color: tokens.primary, backgroundColor: tokens.hover },

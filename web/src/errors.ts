@@ -26,6 +26,10 @@ const SAFE_ERROR_MESSAGES = [
   'The response ended with an error. Please try again.',
   RUNNING_MESSAGE,
   CONNECTION_MESSAGE,
+  'Wait for the current response to finish before compacting.',
+  'Nothing to compact yet. The conversation is still short.',
+  'Compaction is taking longer than expected. Check back in a minute.',
+  'Could not compact this conversation.',
   ...Object.values(STATUS_MESSAGES),
 ];
 

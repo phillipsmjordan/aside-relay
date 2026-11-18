@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { tokens } from './tokens.stylex';
 import { ICON_STROKE, OPEN_DIALOG_SELECTOR, BrowserIcon, IconButton, styles as ui } from './ui';
 import type { RunOptions, UploadAttachment, UseChat } from './types';
+import { compactSession, parseCompactCommand } from './compact';
 import { ModelPicker, useModelSelection } from './ModelPicker';
 import { ContextPicker, type ContextReference } from './ContextPicker';
 
@@ -186,6 +187,13 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
   async function submit() {
     if (!canSubmit) return;
     const sentDraft = draftRef.current; const sentRevision = revisionRef.current;
+    const compactCommand = chat.sessionId && !attachmentRef.current.length ? parseCompactCommand(sentDraft) : undefined;
+    if (compactCommand && chat.sessionId) {
+      if (chat.isRunning) { notify('Wait for the current response to finish before compacting.', 'error'); return; }
+      draftRef.current = ''; setDraft(''); input.current?.blur();
+      void compactSession(chat, chat.sessionId, compactCommand.instructions, notify);
+      return;
+    }
     const sentAttachments = attachmentRef.current;
     const uploads = sentAttachments.flatMap(attachment => attachment.upload ? [attachment.upload] : []);
     sentAttachments.forEach(attachment => { if (attachment.preview) submittedPreviewRevokesRef.current.set(attachment.preview, { canRevoke: false, hasUnmounted: false }); });

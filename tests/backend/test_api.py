@@ -1,6 +1,7 @@
 """HTTP authentication, run lifecycle, queue errors, and request recovery."""
 import re
 import uuid
+import httpx
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -105,6 +106,53 @@ class ApiTests(support.IsolatedBackendTest):
                     response = await client.post(f'/api/sessions/{support.SESSION_ID}/messages', json={"prompt": "Hello"})
                     self.assertEqual(response.status_code, 409)
         start.assert_not_awaited()
+
+    async def test_compact_calls_daemon_with_instructions(self):
+        call = AsyncMock(return_value={})
+        with patch("server.sessions.session_dir", return_value=self.root), patch("server.runner.get_run", return_value=None), \
+                patch("server.sessions.session_status", new=AsyncMock(return_value="idle")), patch("server.daemon.call", new=call):
+            async with support.api_client() as client:
+                response = await client.post(f'/api/sessions/{support.SESSION_ID}/compact', json={"instructions": "  keep file paths  "})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"compacted": True})
+        procedure, value = call.await_args.args
+        self.assertEqual(procedure, "sessions.compact")
+        self.assertEqual(value["sessionId"], support.SESSION_ID)
+        self.assertEqual(value["instructions"], "keep file paths")
+        self.assertTrue(call.await_args.kwargs["mutation"])
+
+    async def test_compact_without_body_omits_instructions(self):
+        call = AsyncMock(return_value={})
+        with patch("server.sessions.session_dir", return_value=self.root), patch("server.runner.get_run", return_value=None), \
+                patch("server.sessions.session_status", new=AsyncMock(return_value="idle")), patch("server.daemon.call", new=call):
+            async with support.api_client() as client:
+                response = await client.post(f'/api/sessions/{support.SESSION_ID}/compact')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("instructions", call.await_args.args[1])
+
+    async def test_compact_rejects_running_unknown_and_invalid(self):
+        call = AsyncMock(return_value={})
+        with patch("server.daemon.call", new=call):
+            async with support.api_client() as client:
+                with patch("server.sessions.session_dir", return_value=self.root), patch("server.runner.get_run", return_value=SimpleNamespace(running=True)):
+                    self.assertEqual((await client.post(f'/api/sessions/{support.SESSION_ID}/compact', json={})).status_code, 409)
+                with patch("server.sessions.session_dir", return_value=None):
+                    self.assertEqual((await client.post(f'/api/sessions/{support.SESSION_ID}/compact', json={})).status_code, 404)
+                with patch("server.sessions.session_dir", return_value=self.root):
+                    self.assertEqual((await client.post(f'/api/sessions/{support.SESSION_ID}/compact', json={"instructions": 5})).status_code, 400)
+                    self.assertEqual((await client.post(f'/api/sessions/{support.SESSION_ID}/compact', json={"other": "x"})).status_code, 400)
+        call.assert_not_awaited()
+
+    async def test_compact_maps_too_small_to_friendly_422(self):
+        request = httpx.Request("POST", "http://daemon/trpc/sessions.compact")
+        response = httpx.Response(500, json={"error": {"json": {"message": "Nothing to compact (session too small)"}}}, request=request)
+        call = AsyncMock(side_effect=httpx.HTTPStatusError("boom", request=request, response=response))
+        with patch("server.sessions.session_dir", return_value=self.root), patch("server.runner.get_run", return_value=None), \
+                patch("server.sessions.session_status", new=AsyncMock(return_value="idle")), patch("server.daemon.call", new=call):
+            async with support.api_client() as client:
+                result = await client.post(f'/api/sessions/{support.SESSION_ID}/compact', json={})
+        self.assertEqual(result.status_code, 422)
+        self.assertEqual(result.json()["detail"], "Nothing to compact yet. The conversation is still short.")
 
     async def test_abort_pauses_queue_before_stopping_run(self):
         operations = []

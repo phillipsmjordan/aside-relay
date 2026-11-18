@@ -89,9 +89,9 @@ class DaemonClient:
                 await task
                 sock.close()
 
-    async def request(self, path: str, value: dict, *, mutation: bool = False):
+    async def request(self, path: str, value: dict, *, mutation: bool = False, timeout: float = 45):
         await self._authorize()
-        async with httpx.AsyncClient(timeout=45) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             for attempt in range(2):
                 request_token = self._token
                 response = await client.request(
@@ -106,8 +106,8 @@ class DaemonClient:
                     self._token = ""
                 await self._authorize()
 
-    async def call(self, procedure: str, value: dict, *, mutation: bool = False):
-        return (await self.request("/trpc/" + procedure, value, mutation=mutation))["result"]["data"]
+    async def call(self, procedure: str, value: dict, *, mutation: bool = False, timeout: float = 45):
+        return (await self.request("/trpc/" + procedure, value, mutation=mutation, timeout=timeout))["result"]["data"]
 
     async def extension(self, method: str, params: dict, binding: dict):
         return await self.request("/extension-bridge/command", {

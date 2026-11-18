@@ -644,6 +644,54 @@ async def api_abort(session_id: str):
     return {"aborted": await runner.abort(session_id)}
 
 
+COMPACT_TIMEOUT_SECONDS = 300
+COMPACT_INSTRUCTIONS_LIMIT = 4000
+
+
+@app.post("/api/sessions/{session_id}/compact", dependencies=[Auth])
+async def api_compact(session_id: str, payload: dict | None = None):
+    """Summarize earlier context like Aside's /compact, optionally guided by instructions."""
+    payload = payload or {}
+    if not set(payload).issubset({"instructions"}):
+        raise HTTPException(400, "invalid compact request")
+    instructions = payload.get("instructions")
+    if instructions is not None and (not isinstance(instructions, str)
+                                     or len(instructions) > COMPACT_INSTRUCTIONS_LIMIT):
+        raise HTTPException(400, "invalid compact instructions")
+    _require_session(session_id)
+    if await _is_running(session_id):
+        raise HTTPException(409, "Wait for the current response to finish before compacting.")
+    value = {"accountId": ACCOUNT_ID, "sessionId": session_id}
+    if instructions and instructions.strip():
+        value["instructions"] = instructions.strip()
+    try:
+        await daemon.call("sessions.compact", value, mutation=True, timeout=COMPACT_TIMEOUT_SECONDS)
+    except httpx.TimeoutException:
+        log.warning("compact timed out session=%s", session_id)
+        raise HTTPException(504, "Compaction is taking longer than expected. Check back in a minute.")
+    except httpx.HTTPStatusError as exc:
+        detail = _daemon_error_message(exc.response)
+        log.warning("compact failed session=%s status=%s detail=%s", session_id, exc.response.status_code, detail)
+        if re.search(r"Nothing to compact|did not reduce context enough", detail, re.I):
+            raise HTTPException(422, "Nothing to compact yet. The conversation is still short.")
+        raise HTTPException(502, "Could not compact this conversation.")
+    except Exception:
+        log.exception("compact failed session=%s", session_id)
+        raise HTTPException(502, "Could not compact this conversation.")
+    return {"compacted": True}
+
+
+def _daemon_error_message(response: httpx.Response) -> str:
+    """Extract the human-readable tRPC error message, if any."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    error = body.get("error") if isinstance(body, dict) else None
+    message = (error.get("json", error) if isinstance(error, dict) else {}).get("message") if isinstance(error, dict) else None
+    return message[:300] if isinstance(message, str) else ""
+
+
 @app.get("/api/sessions/{session_id}/followups", dependencies=[Auth])
 async def api_followups(session_id: str):
     _require_session(session_id)
