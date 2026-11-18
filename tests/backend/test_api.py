@@ -154,6 +154,22 @@ class ApiTests(support.IsolatedBackendTest):
         self.assertEqual(result.status_code, 422)
         self.assertEqual(result.json()["detail"], "Nothing to compact yet. The conversation is still short.")
 
+    async def test_subscription_usage_allowlist_and_cache(self):
+        import server
+        server._subscription_usage_cache.clear()
+        usage = {"providerId": "claude-code", "usage": {"windows": [{"id": "five_hour", "usedPercent": 16, "resetsAt": 1}]}, "state": "active"}
+        call = AsyncMock(return_value=usage)
+        with patch("server.daemon.call", new=call):
+            async with support.api_client() as client:
+                first = await client.get("/api/subscription-usage", params={"provider": "claude-code"})
+                second = await client.get("/api/subscription-usage", params={"provider": "claude-code"})
+                other = await client.get("/api/subscription-usage", params={"provider": "openrouter"})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["usage"]["windows"][0]["usedPercent"], 16)
+        self.assertEqual(second.json(), first.json())
+        self.assertEqual(call.await_count, 1)
+        self.assertEqual(other.json()["state"], "unsupported")
+
     async def test_abort_pauses_queue_before_stopping_run(self):
         operations = []
         async def pause(session_id): operations.append(('pause', session_id))

@@ -23,7 +23,7 @@ _SESSION_FIELDS = (
     "id", "title", "status", "createdAt", "updatedAt", "readAt", "model",
     "projectId", "parentId", "trigger", "incognito", "ephemeral", "permissionMode",
     "queuedMessages", "steeringMessages", "toolState", "suspension", "transcriptRevision",
-    "unread", "waiting", "pinned", "archivedAt",
+    "unread", "waiting", "pinned", "archivedAt", "contextWindow",
 )
 
 

@@ -176,6 +176,30 @@ async def api_models(session_id: str | None = None):
         raise HTTPException(502, "Could not load models.")
 
 
+SUBSCRIPTION_PROVIDERS = {"aside", "claude-code", "kimi-code", "openai-codex", "xai-grok-oauth"}
+SUBSCRIPTION_USAGE_TTL_SECONDS = 60
+_subscription_usage_cache: dict[str, tuple[float, dict]] = {}
+
+
+@app.get("/api/subscription-usage", dependencies=[Auth])
+async def api_subscription_usage(provider: str = Query(..., max_length=40)):
+    """Plan usage windows (5-hour, weekly, monthly) for subscription-backed providers."""
+    if provider not in SUBSCRIPTION_PROVIDERS:
+        return {"providerId": provider, "usage": None, "state": "unsupported"}
+    cached = _subscription_usage_cache.get(provider)
+    if cached and time.monotonic() - cached[0] < SUBSCRIPTION_USAGE_TTL_SECONDS:
+        return cached[1]
+    try:
+        value = await daemon.call("models.getSubscriptionUsage", {"accountId": ACCOUNT_ID, "providerId": provider})
+    except Exception:
+        log.exception("subscription usage failed provider=%s", provider)
+        raise HTTPException(502, "Could not load subscription usage.")
+    result = {"providerId": provider, "usage": value.get("usage") if isinstance(value, dict) else None,
+              "state": value.get("state") if isinstance(value, dict) else None}
+    _subscription_usage_cache[provider] = (time.monotonic(), result)
+    return result
+
+
 @app.put("/api/sessions/{session_id}/model", dependencies=[Auth])
 async def api_select_model(session_id: str, payload: dict):
     if not isinstance(payload.get("provider"), str) or not isinstance(payload.get("modelId"), str):

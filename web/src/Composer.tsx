@@ -8,6 +8,8 @@ import type { RunOptions, UploadAttachment, UseChat } from './types';
 import { compactSession, parseCompactCommand } from './compact';
 import { ModelPicker, useModelSelection } from './ModelPicker';
 import { ContextPicker, type ContextReference } from './ContextPicker';
+import { ContextMeter } from './ContextMeter';
+import type { ContextInfo } from './usage';
 
 type Attachment = { key: string; preview?: string; name: string; mime: string; upload?: UploadAttachment; hasError?: boolean };
 type SpeechRecognitionResult = { 0?: { transcript?: string } };
@@ -19,8 +21,8 @@ const MAX_ATTACHMENTS = 12;
 const COMPACT_DRAFT_HEIGHT = 28;
 const MAX_DRAFT_HEIGHT = 160;
 
-export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, textSize, uiFont, isKeyboardOpen, runOptions }: {
-  chat: UseChat; onBrowser: () => void; draft: string; setDraft: (value: string) => void; revision: number; notify: (text: string, kind?: 'error' | 'success') => void; textSize: number; uiFont: string; isKeyboardOpen: boolean; runOptions?: RunOptions;
+export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, textSize, uiFont, isKeyboardOpen, runOptions, context }: {
+  chat: UseChat; onBrowser: () => void; draft: string; setDraft: (value: string) => void; revision: number; notify: (text: string, kind?: 'error' | 'success') => void; textSize: number; uiFont: string; isKeyboardOpen: boolean; runOptions?: RunOptions; context?: ContextInfo;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const footerRef = useRef<HTMLElement>(null);
@@ -231,7 +233,7 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
       </AnimatePresence>
       <div {...stylex.props(styles.inputActions)}><IconButton label="Add to message" aria-haspopup="dialog" style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => setAddingContext(true)}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>{speechRecognition && <IconButton label={isDictating ? 'Stop dictation' : 'Dictate'} aria-pressed={isDictating} style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={toggleDictation}><Mic size={21} strokeWidth={ICON_STROKE} /></IconButton>}</div>
       <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input, isExpanded && styles.expandedInput)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
-      <div {...stylex.props(styles.submitActions)}>{chat.isRunning && !hasInput
+      <div {...stylex.props(styles.submitActions)}><ContextMeter chat={chat} context={context} notify={notify} />{chat.isRunning && !hasInput
         ? <motion.button key="stop" type="button" aria-label={chat.isStopping ? 'Stopping response' : 'Stop response'} title="Stop response" disabled={chat.isStopping} aria-busy={chat.isStopping} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onPointerDown={event => { isTouchSubmissionRef.current = false; if (event.pointerType === 'touch') event.preventDefault(); }} onClick={event => { if (event.detail === 0 || !isTouchSubmissionRef.current) void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>
         : <motion.button key="send" type="submit" id="send" aria-label={submitLabel} title={submitLabel} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)} onPointerDown={event => { isTouchSubmissionRef.current = event.pointerType === 'touch'; if (isTouchSubmissionRef.current) { event.preventDefault(); void submit(); } }} onClick={event => { if (isTouchSubmissionRef.current && event.detail > 0) event.preventDefault(); }}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
       <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,application/pdf,video/mp4,video/quicktime,video/webm,text/*,.md,.json,.xml,.yaml,.yml,.toml,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.cc,.cpp,.h,.hpp,.docx,.xlsx,.pptx" multiple hidden onChange={event => { void addFiles([...event.target.files || []]); event.target.value = ''; }} />

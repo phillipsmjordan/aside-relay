@@ -10,6 +10,7 @@ import { isRecord } from './responses';
 import { SubagentIcon, subagentColors, type SubagentColor } from './SubagentIcon';
 import { tokens } from './tokens.stylex';
 import { AsideIcon, ICON_STROKE } from './ui';
+import { parseContext, type ContextInfo } from './usage';
 
 const ACTIVE_POLL_INTERVAL_MS = 1_500;
 const IDLE_POLL_INTERVAL_MS = 5_000;
@@ -58,6 +59,7 @@ export type SessionWorkspaceState = {
   agents: WorkspaceAgent[];
   todos: WorkspaceTodo[];
   outputs: WorkspaceOutput[];
+  context?: ContextInfo;
 };
 
 type WorkspacePanel = 'agents' | 'todos' | 'summary';
@@ -324,6 +326,7 @@ function parseWorkspaceState(value: unknown, sessionId: string): SessionWorkspac
     agents: mergeAgents(children, subagents),
     todos: Array.isArray(value.todos) ? value.todos.flatMap(parseTodo) : [],
     outputs: Array.isArray(value.outputs) ? value.outputs.flatMap(parseOutput) : [],
+    context: parseContext(session),
   };
 }
 
