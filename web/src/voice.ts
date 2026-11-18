@@ -62,10 +62,21 @@ export function automaticVoice(voices = canSpeak ? window.speechSynthesis.getVoi
 
 export function pageLanguages() { return preferredLanguages(); }
 
+/** Some Android builds give several voices the same voiceURI, so identify a voice by URI, name and language together. */
+export function voiceId(voice: Pick<SpeechSynthesisVoice, 'voiceURI' | 'name' | 'lang'>) { return `${voice.voiceURI}|${voice.name}|${voice.lang}`; }
+
+export function findVoice(voices: SpeechSynthesisVoice[], id?: string) {
+  if (!id) return undefined;
+  return voices.find(voice => voiceId(voice) === id) ?? (id.includes('|') ? undefined : voices.find(voice => voice.voiceURI === id));
+}
+
+/** The voice and language the last utterance asked for, for the Settings readout. */
+let lastRequested = '';
+export function lastRequestedVoice() { return lastRequested; }
+
 function pickVoice() {
   const voices = window.speechSynthesis.getVoices();
-  const { voiceURI } = loadVoicePrefs();
-  return (voiceURI ? voices.find(voice => voice.voiceURI === voiceURI) : undefined) ?? automaticVoice(voices);
+  return findVoice(voices, loadVoicePrefs().voiceURI) ?? automaticVoice(voices);
 }
 
 /** Speaks text. Resolves true when it finished, false when it was stopped or replaced. */
@@ -79,6 +90,7 @@ export function speak(key: string, text: string, { isMarkdown = true } = {}): Pr
   setSpeakerState({ key });
   const voice = pickVoice();
   const { rate } = loadVoicePrefs();
+  lastRequested = voice ? `${voice.name} · ${voice.lang}${voice.localService ? '' : ' · online'}` : `system default · ${language()}`;
   return new Promise(resolve => {
     let index = 0;
     const finish = (completed: boolean) => {
