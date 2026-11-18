@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { createPortal } from 'react-dom';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowDown, Check, CircleAlert, Ellipsis, Menu, SquarePen, X } from 'lucide-react';
+import { ArrowDown, AudioLines, Check, CircleAlert, Ellipsis, Menu, SquarePen, X } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion, usePresence, useReducedMotion } from 'motion/react';
 import { useChat } from './chat';
 import { isRecord } from './responses';
@@ -21,6 +21,7 @@ import { BrowserPanel } from './BrowserPanel';
 import { ImagePreview } from './ImagePreview';
 import { Settings } from './Settings';
 import { SessionWorkspace, type SessionWorkspaceState } from './SessionWorkspace';
+import { VoiceBar, isVoiceSupported, useVoiceMode } from './VoiceMode';
 import { RenameConversation, SessionMenu, type SessionMenuTarget } from './SessionMenu';
 import { applyTheme, loadThemeMode, resolveTheme, loadAppearance, APPEARANCE_STORAGE_KEY, type Appearance, type ThemeMode, THEME_STORAGE_KEY, applyTextSize, loadTextSize, TEXT_SIZE_STORAGE_KEY, type Theme } from './theme';
 import { ICON_STROKE, SESSION_MENU_LABEL, DELETE_CONVERSATION_TITLE, OPEN_DIALOG_SELECTOR, Sheet, DialogBackdropReset, IconButton, focusDialogSurface, resolveDialogReturnFocus, trapDialogFocus, styles as ui } from './ui';
@@ -101,6 +102,7 @@ export function App() {
     const id = `local:${++localToastIdRef.current}`; setLocalToasts(current => [...current, { id, createdAt: Date.now(), message, tone: kind }]);
   }, []);
   const notifications = usePushNotifications(chat, notify);
+  const voice = useVoiceMode({ chat, suspension: workspaceState?.sessionId === chat.sessionId ? workspaceState?.suspension : undefined, notify, onEdit: text => { setDraft(text); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#draft')?.focus({ preventScroll: true })); } });
   const dismissToast = useCallback((id: string) => { chat.dismissToast(id); setLocalToasts(current => current.filter(toast => toast.id !== id)); }, [chat.dismissToast]);
   function changeTextSize(size: number) {
     applyTextSize(size); setTextSize(size);
@@ -253,7 +255,8 @@ export function App() {
     const hasWorkspace = workspaceState?.sessionId === chat.sessionId && !!workspaceState && (workspaceState.agents.length > 0 || workspaceState.todos.length > 0 || workspaceState.outputs.length > 0 || !!workspaceState.summary);
     const hasSuspension = workspaceState?.sessionId === chat.sessionId && !!workspaceState?.suspension;
     viewportRef.current?.style.setProperty('--workspace-height', `${(hasWorkspace ? 40 : 0) + (hasSuspension ? 44 : 0)}px`);
-  }, [workspaceState, chat.sessionId]);
+    viewportRef.current?.style.setProperty('--voice-height', voice.isOn ? '58px' : '0px');
+  }, [workspaceState, chat.sessionId, voice.isOn]);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -322,7 +325,7 @@ export function App() {
       <div className="sr-only" role="status" aria-atomic="true">{announcement}</div>
       <header ref={headerRef} id="header" {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><Menu size={24} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{runOptions?.mode === 'incognito' && !chat.sessionId ? 'Incognito' : workspaceState && workspaceState.sessionId === chat.sessionId && workspaceState.suspension ? workspaceState.suspension.title : chat.isRunning ? `${subtitleBase} · Working…` : workspaceState?.sessionId === chat.sessionId && workspaceState?.status === 'errored' ? `${subtitleBase} · Task failed` : subtitleBase}</span></div></div>
-        <div {...stylex.props(ui.glass, styles.headerActions)}><IconButton label="New chat" style={{ height: 40 }} onClick={() => newChat()}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
+        <div {...stylex.props(ui.glass, styles.headerActions)}>{isVoiceSupported && chat.sessionId && !chat.authError && <IconButton label={voice.isOn ? 'Turn off voice mode' : 'Turn on voice mode'} aria-pressed={voice.isOn} style={{ height: 40 }} disabled={!chat.isReady || chat.isOpening} onClick={voice.toggle}><AudioLines size={22} strokeWidth={ICON_STROKE} aria-hidden="true" {...stylex.props(voice.isOn && styles.voiceOn)} /></IconButton>}<IconButton label="New chat" style={{ height: 40 }} onClick={() => newChat()}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
       </header>
       {chat.authError && <div role="alert" {...stylex.props(styles.notice)}><span>Connect to load your conversations.</span><button {...stylex.props(styles.noticeAction)} onClick={() => openPanel('settings')}>Settings</button></div>}
       {chat.isReady && !chat.isConnected && !chat.authError && <div role="status" {...stylex.props(styles.connectionIndicator)}><span className="sr-only">Reconnecting…</span><motion.span aria-hidden="true" {...stylex.props(styles.connectionSpinner)} animate={shouldReduceMotion ? undefined : { rotate: 360 }} transition={{ duration: .8, repeat: Infinity, ease: 'linear' }} /></div>}
@@ -331,6 +334,7 @@ export function App() {
         <AnimatePresence>{canJump && !chat.isOpening && <motion.button key="jump" aria-label="Scroll to latest message" {...stylex.props(styles.jump, ui.glass)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, y: 6 }} transition={{ duration: .16 }} whileTap={{ scale: .9 }} onClick={() => listRef.current?.scrollToIndex(latestMessage)}><ArrowDown size={19} strokeWidth={ICON_STROKE} /></motion.button>}</AnimatePresence>
         {chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <BrowserLive key={chat.sessionId} sessionId={chat.sessionId} request={chat.request} isBrowserOpen={panel === 'browser'} isVisible={!panel && !isDrawer && !menuSession && !deleteTarget && !zoom} onOpen={targetId => openPanel('browser', targetId)} />}
       </div>
+      {chat.isReady && !chat.isOpening && !chat.authError && <VoiceBar voice={voice} />}
       {chat.isReady && !chat.isOpening && !chat.authError && <SessionWorkspace chat={chat} notify={notify} onOpenSession={openSession} onOutputs={() => openPanel('files')} onStateChange={setWorkspaceState} />}
       <Composer runOptions={runOptions} chat={chat} onBrowser={() => openPanel('browser')} draft={draft} setDraft={setDraft} revision={revision} notify={notify} textSize={textSize} uiFont={appearance.uiFont} isKeyboardOpen={isKeyboardOpen} />
     </main>
@@ -417,6 +421,7 @@ const styles = stylex.create({
   header: { position: 'absolute', top: 0, left: 0, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 68, padding: 'calc(12px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 12px max(18px, env(safe-area-inset-left))', backgroundImage: 'linear-gradient(to bottom, var(--canvas), color-mix(in srgb, var(--canvas) 80%, transparent) 60%, transparent)', backdropFilter: 'blur(10px)', zIndex: 3, pointerEvents: 'none' },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 },
   heading: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
+  voiceOn: { color: tokens.primary },
   headerActions: { display: 'flex', alignItems: 'center', gap: 0, padding: 0, borderRadius: 28, flexShrink: 0, pointerEvents: 'auto' },
   mobileMenu: { display: 'none', borderRadius: '50%', pointerEvents: 'auto', '@media (max-width: 820px)': { display: 'inline-flex' } },
   title: { fontSize: '.9375rem', lineHeight: 1.25, fontWeight: 650, letterSpacing: '-.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
@@ -428,7 +433,7 @@ const styles = stylex.create({
   conversationLoading: { display: 'flex', height: '100%', alignItems: 'flex-end', padding: '20px max(20px, env(safe-area-inset-right)) calc(var(--composer-height) + 28px) max(20px, env(safe-area-inset-left))', minWidth: 0 },
   messageSkeleton: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 736, margin: '0 auto' },
   skeletonLine: { height: 12, borderRadius: 6, backgroundColor: tokens.bubble },
-  jump: { position: 'absolute', left: '50%', marginLeft: -20, bottom: 'calc(var(--composer-height) + var(--workspace-height, 0px) + 10px)', width: 40, height: 40, borderRadius: '50%', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, backgroundColor: tokens.canvas, color: tokens.text, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgb(0 0 0 / .06)' },
+  jump: { position: 'absolute', left: '50%', marginLeft: -20, bottom: 'calc(var(--composer-height) + var(--workspace-height, 0px) + var(--voice-height, 0px) + 10px)', width: 40, height: 40, borderRadius: '50%', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, backgroundColor: tokens.canvas, color: tokens.text, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgb(0 0 0 / .06)' },
   notice: { display: 'flex', position: 'absolute', top: 'var(--header-height)', right: 16, left: 16, zIndex: 3, alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: 0, padding: '10px 14px', borderRadius: 14, backgroundColor: tokens.surface, fontSize: '0.8125rem', lineHeight: 1.5, flexShrink: 0 },
   noticeAction: { backgroundColor: 'transparent', color: tokens.text, borderWidth: 0, minHeight: 32, fontSize: '0.8125rem', textDecoration: 'underline' },
   connectionIndicator: { position: 'absolute', top: 'calc(var(--header-height) + 4px)', left: '50%', marginLeft: -7, width: 14, height: 14, zIndex: 3, pointerEvents: 'none' },

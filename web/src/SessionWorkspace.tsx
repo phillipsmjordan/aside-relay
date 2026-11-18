@@ -98,6 +98,24 @@ export function SessionWorkspace({ chat, notify, onOpenSession, onOutputs, onSta
     };
   }, [sessionId]);
 
+  // Voice mode answers questions without this panel; hide the answered one right away.
+  useEffect(() => {
+    const onResolved = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; toolCallId?: string }>).detail;
+      if (!detail?.toolCallId || detail.sessionId !== sessionIdRef.current) return;
+      resolvedSuspensionsRef.current.set(detail.toolCallId, Date.now());
+      setPanel(current => current === 'summary' ? undefined : current);
+      setState(current => {
+        if (!current || current.suspension?.toolCallId !== detail.toolCallId) return current;
+        const next = { ...current, suspension: undefined };
+        publishState(next);
+        return next;
+      });
+    };
+    window.addEventListener('aside:suspension-resolved', onResolved);
+    return () => window.removeEventListener('aside:suspension-resolved', onResolved);
+  }, []);
+
   useEffect(() => {
     const questions = state?.suspension?.questions ?? [];
     setAnswers(Object.fromEntries(questions.flatMap(question => question.options[0] ? [[question.id, [question.options[0].label]]] : [])));

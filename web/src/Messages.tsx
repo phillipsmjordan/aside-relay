@@ -21,6 +21,7 @@ import { Button } from './Button';
 import { Dialog, DialogDescription } from './Dialog';
 import { DraftCard } from './DraftCard';
 import { DRAFT_LANGUAGES, parseDraft } from './drafts';
+import { ReadAloudButton } from './VoiceMode';
 
 const markdownPlugins = [remarkGfm];
 const highlightPlugins = [rehypeHighlight];
@@ -178,6 +179,15 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
     }
     if (textBlocks.length && message.role !== 'toolResult' && message.role !== 'system') groups.push({ kind: 'message', message: { ...message, blocks: textBlocks } });
   });
+  // The last text reply of each finished turn gets a read-aloud button.
+  const turnEnds = new Set<number>();
+  let lastReplySeq: number | undefined;
+  groups.forEach(group => {
+    if (group.kind !== 'message') return;
+    if (group.message.role === 'assistant') lastReplySeq = group.message.seq;
+    else if (group.message.role === 'user') { if (lastReplySeq !== undefined) turnEnds.add(lastReplySeq); lastReplySeq = undefined; }
+  });
+  if (lastReplySeq !== undefined && !isRunning && !liveAssistant?.text) turnEnds.add(lastReplySeq);
   if (pendingPrompt !== undefined) groups.push({ kind: 'pending' });
   if (liveAssistant?.text) groups.push({ kind: 'live' });
   else if (isRunning) groups.push({ kind: isSuspended ? 'waiting' : 'working' });
@@ -214,6 +224,7 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
       {attachments.map(attachment => /\.(?:png|jpe?g|gif|webp|avif)$/i.test(attachment.src) ? <button key={attachment.src} {...stylex.props(styles.imageButton)} onClick={() => onZoom(attachment.src)}><img src={attachment.src} alt={attachment.name} {...stylex.props(styles.image)} /></button> : <a key={attachment.src} href={attachment.src} target="_blank" rel="noopener noreferrer" {...stylex.props(styles.fileAttachment)}><FileText size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>{attachment.name}</span></a>)}
       {message.role === 'user' ? <div {...stylex.props(styles.userText)}>{text}</div> : <ResponseMarkdown text={text} sessionId={chat.sessionId} notify={notify} onZoom={onZoom} onAction={!liveAssistant?.text && message.seq === lastConversationMessage?.seq ? onDraftAction : undefined} />}
       {message.blocks.filter(block => block.type === 'image').map((block, index) => block.type === 'image' ? <button key={index} {...stylex.props(styles.imageButton)} onClick={() => onZoom('/api/media/' + block.mediaId)}><img src={'/api/media/' + block.mediaId} alt="Attachment" loading="lazy" {...stylex.props(styles.image)} /></button> : undefined)}
+      {message.role === 'assistant' && turnEnds.has(message.seq) && <div {...stylex.props(styles.replyActions)}><ReadAloudButton id={String(message.seq)} text={raw} /></div>}
     </article>;
   }
 }
@@ -245,7 +256,7 @@ const styles = stylex.create({
   row: { display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0, maxWidth: 736, margin: '0 auto', padding: '0 max(20px, env(safe-area-inset-right)) 14px max(20px, env(safe-area-inset-left))', alignItems: 'stretch' },
   activityRow: { paddingBottom: 4 },
   firstRow: { paddingTop: 'calc(var(--header-height) + 12px)' },
-  bottomSpace: { height: 'calc(var(--composer-height) + var(--workspace-height, 0px))' },
+  bottomSpace: { height: 'calc(var(--composer-height) + var(--workspace-height, 0px) + var(--voice-height, 0px))' },
   message: { minWidth: 0, maxWidth: '100%', flexShrink: 0 },
   user: { alignSelf: 'flex-end', backgroundColor: tokens.bubble, borderRadius: 24, padding: '12px 18px', maxWidth: '88%', fontSize: '1rem', lineHeight: 1.55 },
   userText: { fontFamily: 'var(--font-content)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
@@ -259,6 +270,7 @@ const styles = stylex.create({
   imageButton: { borderWidth: 0, padding: 0, backgroundColor: 'transparent', display: 'block', width: '100%', maxWidth: '100%', cursor: 'zoom-in' },
   image: { display: 'block', width: '100%', height: 'clamp(160px, 52vw, 320px)', objectFit: 'contain', borderRadius: 16 },
   diagram: { height: PREVIEW_HEIGHT, margin: 0, padding: 16, overflow: 'auto', maxWidth: '100%', backgroundColor: tokens.mediaWhite },
+  replyActions: { display: 'flex', alignItems: 'center', marginTop: 2, marginLeft: -8 },
   working: { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: tokens.muted, paddingTop: 2 },
   pulse: { display: 'inline-block', width: 8, height: 8, backgroundColor: tokens.text, borderRadius: '50%' },
 });
