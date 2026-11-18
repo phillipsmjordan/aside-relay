@@ -12,6 +12,7 @@ import { TEXT_SIZES, THEME_PRESETS, UI_FONTS, CODE_FONTS, ACCENT_COLORS, DEFAULT
 import { useAutoRefresh } from './useAutoRefresh';
 import type { PushNotifications } from './notifications';
 import { parseHealth } from './responses';
+import { VoiceSettings } from './VoiceSettings';
 
 type Health = ReturnType<typeof parseHealth>;
 
@@ -48,6 +49,7 @@ export function Settings({ chat, notify, notifications, isDarkMode, onThemeToggl
       <p {...stylex.props(ui.muted)}>{notifications.unavailableReason || (notifications.status === 'denied' ? `Allow notifications for ${APP_NAME} in your device settings.` : 'Get notified when a response finishes while you are away from the app. Tap a notification to open its conversation.')}</p>
       {notifications.status !== 'unavailable' && notifications.status !== 'denied' && <Button disabled={notifications.isUpdating || notifications.status === 'checking' || !chat.isReady || !!chat.authError} onClick={() => { void (notifications.status === 'enabled' ? notifications.disable() : notifications.enable()); }}>{notifications.isUpdating ? 'Updating…' : notifications.status === 'enabled' ? 'Turn off notifications' : 'Enable notifications'}</Button>}
     </section>
+    <VoiceSettings />
     <section><h3 {...stylex.props(styles.heading)}>Appearance</h3><div {...stylex.props(styles.statusRow)}><span>Dark mode</span><motion.button type="button" role="switch" aria-label="Dark mode" aria-checked={isDarkMode} whileTap={shouldReduceMotion ? undefined : { scale: .94 }} onClick={onThemeToggle} {...stylex.props(styles.themeSwitch)}><motion.span animate={{ backgroundColor: isDarkMode ? 'var(--primary)' : 'var(--hover)' }} transition={{ duration: shouldReduceMotion ? 0 : .18 }} {...stylex.props(styles.switchTrack)}><motion.span animate={{ x: isDarkMode ? 20 : 0 }} transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 34 }} {...stylex.props(styles.switchThumb)} /></motion.span></motion.button></div>
       <div {...stylex.props(styles.statusRow)}><label htmlFor="text-size">Text size</label><select id="text-size" value={textSize} onChange={event => onTextSizeChange(Number(event.target.value))} {...stylex.props(styles.textSize)}>{TEXT_SIZES.map(size => <option key={size} value={size}>{size}%</option>)}</select></div>
       <div {...stylex.props(styles.statusRow)}><label htmlFor="theme-mode">Theme mode</label><select id="theme-mode" value={themeMode} onChange={event => onThemeModeChange(event.target.value as ThemeMode)} {...stylex.props(styles.textSize)}><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></div>

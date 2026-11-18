@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { chooseVoice, speakableText, speechChunks } from './speech';
 
 // One shared speaker for the whole app, so a read-aloud button and voice mode never talk over each other.
@@ -22,10 +22,50 @@ function preferredLanguages() {
 
 function language() { return preferredLanguages()[0]; }
 
-function pickVoice() {
-  const voices = window.speechSynthesis.getVoices();
+// Per-device voice choice, saved in this browser.
+export type VoicePrefs = { voiceURI?: string; rate: number };
+const PREFS_KEY = 'aside-relay:voice-prefs';
+export const DEFAULT_RATE = 1.05;
+
+export function loadVoicePrefs(): VoicePrefs {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
+    if (typeof value !== 'object' || value === null) return { rate: DEFAULT_RATE };
+    const voiceURI = Reflect.get(value, 'voiceURI');
+    const rate = Number(Reflect.get(value, 'rate'));
+    return { voiceURI: typeof voiceURI === 'string' && voiceURI ? voiceURI : undefined, rate: Number.isFinite(rate) && rate >= 0.5 && rate <= 2 ? rate : DEFAULT_RATE };
+  } catch { return { rate: DEFAULT_RATE }; }
+}
+
+export function saveVoicePrefs(prefs: VoicePrefs) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* storage unavailable */ }
+}
+
+/** The voices this device offers. Chrome loads them asynchronously, so listen for voiceschanged. */
+export function useVoices() {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => canSpeak ? window.speechSynthesis.getVoices() : []);
+  useEffect(() => {
+    if (!canSpeak) return;
+    const update = () => setVoices(window.speechSynthesis.getVoices());
+    update();
+    window.speechSynthesis.addEventListener('voiceschanged', update);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', update);
+  }, []);
+  return voices;
+}
+
+/** The voice "Automatic" resolves to on this device. */
+export function automaticVoice(voices = canSpeak ? window.speechSynthesis.getVoices() : []) {
   const index = chooseVoice(voices, preferredLanguages());
   return index >= 0 ? voices[index] : undefined;
+}
+
+export function pageLanguages() { return preferredLanguages(); }
+
+function pickVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  const { voiceURI } = loadVoicePrefs();
+  return (voiceURI ? voices.find(voice => voice.voiceURI === voiceURI) : undefined) ?? automaticVoice(voices);
 }
 
 /** Speaks text. Resolves true when it finished, false when it was stopped or replaced. */
@@ -38,6 +78,7 @@ export function speak(key: string, text: string, { isMarkdown = true } = {}): Pr
   if (!chunks.length) { setSpeakerState({}); return Promise.resolve(true); }
   setSpeakerState({ key });
   const voice = pickVoice();
+  const { rate } = loadVoicePrefs();
   return new Promise(resolve => {
     let index = 0;
     const finish = (completed: boolean) => {
@@ -50,7 +91,7 @@ export function speak(key: string, text: string, { isMarkdown = true } = {}): Pr
       const utterance = new SpeechSynthesisUtterance(chunks[index++]);
       utterance.lang = voice?.lang ?? language();
       if (voice) utterance.voice = voice;
-      utterance.rate = 1.05;
+      utterance.rate = rate;
       utterance.onend = next;
       utterance.onerror = event => { if (event.error === 'interrupted' || event.error === 'canceled') { if (token === speakToken) finish(false); else resolve(false); } else next(); };
       synth.speak(utterance);
