@@ -84,3 +84,15 @@ test('question speech lists numbered options', () => {
   assert.equal(speech, 'Which branch? Options. 1: main. 2: dev. Say a number, or say your own answer.')
   assert.equal(suspensionSpeech({ kind: 'approval', title: 'Run command', message: 'git push', questions: [] }), 'Run command. git push. Say allow or deny.')
 })
+
+test('voice choice prefers the phone locale over the first English voice', async () => {
+  const { chooseVoice } = await import('../../web/src/speech.ts')
+  const android = [{ lang: 'en-AU' }, { lang: 'en-GB' }, { lang: 'en-IN' }, { lang: 'en-US' }, { lang: 'es-ES' }]
+  assert.equal(chooseVoice(android, ['en-US', 'en']), 3)
+  assert.equal(chooseVoice(android, ['en-GB']), 1)
+  assert.equal(chooseVoice(android, ['en']), 3)
+  assert.equal(chooseVoice([{ lang: 'en_AU' }, { lang: 'en_US' }], ['en-US']), 1)
+  assert.equal(chooseVoice([{ lang: 'en-AU' }, { lang: 'en-US', default: true }, { lang: 'en-US', localService: true }], ['en-US']), 1)
+  assert.equal(chooseVoice([{ lang: 'en-AU' }, { lang: 'en-GB' }], ['en-US']), 0)
+  assert.equal(chooseVoice([{ lang: 'fr-FR' }], ['en-US']), -1)
+})

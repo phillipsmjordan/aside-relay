@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { speakableText, speechChunks } from './speech';
+import { chooseVoice, speakableText, speechChunks } from './speech';
 
 // One shared speaker for the whole app, so a read-aloud button and voice mode never talk over each other.
 
@@ -12,15 +12,20 @@ function setSpeakerState(next: SpeakerState) { speakerState = next; listeners.fo
 
 export const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
 
-function language() { return document.documentElement.lang || navigator.language || 'en-US'; }
+/** The phone's locale (for example en-US) when it matches the page language; the page's bare "en" is too vague. */
+function preferredLanguages() {
+  const page = (document.documentElement.lang || 'en').toLowerCase();
+  const browser = (navigator.languages?.length ? navigator.languages : [navigator.language]).filter(Boolean);
+  const matching = browser.filter(lang => lang.toLowerCase().split(/[-_]/)[0] === page.split('-')[0]);
+  return matching.length ? matching : [page.includes('-') ? page : page === 'en' ? 'en-US' : page];
+}
+
+function language() { return preferredLanguages()[0]; }
 
 function pickVoice() {
   const voices = window.speechSynthesis.getVoices();
-  const lang = language().toLowerCase();
-  const base = lang.split('-')[0];
-  return voices.find(voice => voice.default && voice.lang.toLowerCase().startsWith(base))
-    ?? voices.find(voice => voice.lang.toLowerCase() === lang && voice.localService)
-    ?? voices.find(voice => voice.lang.toLowerCase().startsWith(base));
+  const index = chooseVoice(voices, preferredLanguages());
+  return index >= 0 ? voices[index] : undefined;
 }
 
 /** Speaks text. Resolves true when it finished, false when it was stopped or replaced. */

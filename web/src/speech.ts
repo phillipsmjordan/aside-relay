@@ -149,3 +149,34 @@ export function suspensionSpeech(suspension: SpokenSuspension, questionIndex = 0
   const options = question.options.map((option, index) => `${index + 1}: ${speakableText(option.label)}`).join(' ');
   return `${prefix}${speakableText(question.prompt || question.title || suspension.title)} ${options ? 'Options. ' + options + ' ' : ''}Say a number, or say your own answer.`;
 }
+
+export type VoiceLike = { lang: string; default?: boolean; localService?: boolean; name?: string };
+
+function normalizeLang(lang: string) { return lang.replace(/_/g, '-').toLowerCase(); }
+
+/**
+ * Picks the voice to read with. Prefers the phone's own locale (en-US) over the first voice of the language,
+ * because Android lists voices alphabetically and en-AU would otherwise win. Returns -1 when nothing fits.
+ */
+export function chooseVoice(voices: VoiceLike[], preferred: string[]): number {
+  const wanted = preferred.map(normalizeLang).filter(Boolean);
+  const primary = wanted[0] ?? 'en-us';
+  const base = primary.split('-')[0];
+  const regionFallback = base === 'en' ? 'en-us' : undefined;
+  const score = (voice: VoiceLike) => {
+    const lang = normalizeLang(voice.lang);
+    if (lang.split('-')[0] !== base) return -1;
+    let value = 0;
+    const rank = wanted.indexOf(lang);
+    if (rank === 0) value += 100;
+    else if (rank > 0) value += 60 - rank;
+    else if (lang === regionFallback) value += 40;
+    if (voice.default) value += 10;
+    if (voice.localService) value += 1;
+    return value;
+  };
+  let best = -1;
+  let bestScore = -1;
+  voices.forEach((voice, index) => { const value = score(voice); if (value > bestScore) { best = index; bestScore = value; } });
+  return best;
+}
