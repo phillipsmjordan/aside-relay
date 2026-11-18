@@ -352,7 +352,7 @@ async def tail_messages(session_id: str, start_offset: int = 0,
 
 # --------------------------------------------------------------------- 데몬 프록시
 async def live_sessions() -> list[dict]:
-    args = [config.ASIDE_BIN, "session", "list"]
+    args = [config.ASIDE_BIN, "session", "list", "--json"]
     if config.ASIDE_ACCOUNT:
         args += ["--account", config.ASIDE_ACCOUNT]
     proc = await asyncio.create_subprocess_exec(
@@ -370,13 +370,39 @@ async def live_sessions() -> list[dict]:
         raise
     if proc.returncode != 0:
         raise RuntimeError("Aside session list failed")
-    text = out.decode("utf-8", "replace").strip()
-    if text == "No sessions.":
+    return parse_session_list(out.decode("utf-8", "replace"))
+
+
+_SESSION_ID = re.compile(r"[A-Za-z0-9]{12,32}")
+
+
+def parse_session_list(text: str) -> list[dict]:
+    """Parse `aside session list` output: JSON (current CLI) or the older two-space text table."""
+    text = text.strip()
+    if not text or text == "No sessions.":
         return []
+    if text[0] in "[{":
+        try:
+            value = json.loads(text)
+        except ValueError:
+            raise RuntimeError("Unrecognized Aside session list output")
+        rows = value.get("sessions") if isinstance(value, dict) else value
+        if not isinstance(rows, list):
+            raise RuntimeError("Unrecognized Aside session list output")
+        items = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("id"), str) or not _SESSION_ID.fullmatch(row["id"]):
+                continue
+            items.append({"id": row["id"], "status": row.get("status"), "ephemeral": bool(row.get("ephemeral")),
+                          "title": row.get("title") or "", "updatedAt": row.get("updatedAt")})
+        return items
     items = []
     for line in text.splitlines():
-        match = re.fullmatch(r"([A-Za-z0-9]{12,32})  (\S+)  (ephemeral|persistent)  (.*?)  (\S+)", line)
+        match = (re.fullmatch(r"([A-Za-z0-9]{12,32})  (\S+)  (ephemeral|persistent)  (.*?)  (\S+)", line)
+                 or re.fullmatch(r"([A-Za-z0-9]{12,32})\t(\S+)\t(ephemeral|persistent)\t(.*?)\t(\S+)", line))
         if not match:
+            if line.split() and line.split()[0] == "ID":
+                continue
             raise RuntimeError("Unrecognized Aside session list output")
         sid, status, kind, title, updated = match.groups()
         items.append({"id": sid, "status": status, "ephemeral": kind == "ephemeral",

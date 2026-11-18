@@ -725,7 +725,7 @@ async def delete_session(session_id: str) -> bool:
     if directory is None or directory.resolve().parent != config.SESSIONS_DIR.resolve():
         return False
     proc = await asyncio.create_subprocess_exec(
-        config.ASIDE_BIN, "session", "delete", *_account_args(), session_id,
+        config.ASIDE_BIN, "session", "delete", "--yes", *_account_args(), session_id,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
     )
     out, _ = await _communicate(proc, timeout=30)
@@ -734,7 +734,11 @@ async def delete_session(session_id: str) -> bool:
     if proc.returncode != 0 and text != "Session not found":
         return False
     try:
-        await asyncio.to_thread(shutil.rmtree, directory)
+        # Newer Aside CLIs remove the session folder themselves.
+        if directory.exists():
+            await asyncio.to_thread(shutil.rmtree, directory)
+    except FileNotFoundError:
+        pass
     except OSError:
         log.exception("session files deletion failed session=%s", session_id)
         return False

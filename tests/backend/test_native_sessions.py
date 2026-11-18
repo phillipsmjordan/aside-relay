@@ -1,3 +1,4 @@
+import unittest
 """Contract tests for the allowlisted native session bridge."""
 from tests.backend import support
 
@@ -399,3 +400,18 @@ class NativeSessionContractTests(support.IsolatedBackendTest):
                     )
                 self.assertEqual(response.status_code, expected)
                 self.assertFalse(any(mutation for _, _, mutation in calls))
+
+
+class SessionListParsingTests(unittest.TestCase):
+    def test_parses_json_tab_and_legacy_formats(self):
+        import sessions
+        json_text = '{"sessions": [{"id": "HdMCXvmjtRoSCoGq", "status": "running", "ephemeral": false, "title": "T", "updatedAt": "2026-11-18T14:01:03.000Z"}, {"id": "bad"}]}'
+        self.assertEqual(sessions.parse_session_list(json_text), [
+            {"id": "HdMCXvmjtRoSCoGq", "status": "running", "ephemeral": False, "title": "T", "updatedAt": "2026-11-18T14:01:03.000Z"}])
+        tab = "ID\tSTATUS\tTYPE\tTITLE\tUPDATED\nHdMCXvmjtRoSCoGq\tidle\tephemeral\tAside CLI REPL\t2026-11-18T14:02:20.000Z"
+        self.assertEqual(sessions.parse_session_list(tab)[0]["status"], "idle")
+        self.assertTrue(sessions.parse_session_list(tab)[0]["ephemeral"])
+        self.assertEqual(sessions.parse_session_list("HdMCXvmjtRoSCoGq  idle  persistent  Old  2026-11-18")[0]["title"], "Old")
+        self.assertEqual(sessions.parse_session_list("No sessions."), [])
+        with self.assertRaises(RuntimeError):
+            sessions.parse_session_list("garbage line")
