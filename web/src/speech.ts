@@ -181,6 +181,11 @@ export function chooseVoice(voices: VoiceLike[], preferred: string[]): number {
   return best;
 }
 
+/** Errors that will keep happening, so voice mode should stop listening on its own until the user taps Talk. */
+export function isFatalListenError(code: string | undefined): boolean {
+  return code === 'network' || code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture' || code === 'unsupported' || code === 'language-not-supported';
+}
+
 /** Plain-language reason a speech-recognition attempt failed, with what to do about it. */
 export function listenErrorMessage(code: string | undefined, secure = true): string {
   if (!secure || code === 'unsupported') {

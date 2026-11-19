@@ -6,7 +6,7 @@ import type { SessionWorkspaceState } from './SessionWorkspace';
 import { Button } from './Button';
 import { IconButton, ICON_STROKE } from './ui';
 import { tokens } from './tokens.stylex';
-import { extractSpeak, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, setVoiceNoteOn, speakableText, splitHead, suspensionSpeech } from './speech';
+import { extractSpeak, isFatalListenError, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, setVoiceNoteOn, speakableText, splitHead, suspensionSpeech } from './speech';
 import { ApiError } from './chat';
 import { canListen, canSpeak, listen, speak, stopSpeaking, useSpeakingKey, type ListenResult } from './voice';
 
@@ -74,6 +74,9 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
   const onOpenSessionRef = useRef(onOpenSession);
   const runRef = useRef(0);
   const stopListeningRef = useRef<(() => void) | undefined>(undefined);
+  // Set after a listening error that will repeat (no speech service, mic blocked). Replies are still read aloud.
+  const listenBrokenRef = useRef<string | undefined>(undefined);
+  const [isListenBroken, setListenBroken] = useState(false);
   const spokenRef = useRef(new Set<string>());
   const handledRef = useRef(new Set<string>());
   const resolvedRef = useRef(new Set<string>());
@@ -166,21 +169,26 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
     if (isCurrent(run)) { if (announcementsRef.current.length) void announceNext(run); else proceed(run); }
   }
 
-  async function listenOnce(run: number): Promise<ListenResult> {
+  async function listenOnce(run: number, isManual = false): Promise<ListenResult> {
+    if (isManual) { listenBrokenRef.current = undefined; setListenBroken(false); }
+    // Don't retry (and don't repeat the error) on every chat change once listening is known to fail.
+    if (listenBrokenRef.current) { setPhase('idle'); return { transcript: '', error: listenBrokenRef.current }; }
     setPhase('listening'); setHeard('');
     const session = listen(setHeard);
     stopListeningRef.current = session.stop;
     const result = await session.result;
     if (stopListeningRef.current === session.stop) stopListeningRef.current = undefined;
     if (result.error && isCurrent(run)) {
-      notifyRef.current(listenErrorMessage(result.error, window.isSecureContext), 'error');
+      const isFatal = isFatalListenError(result.error);
+      if (isFatal) { listenBrokenRef.current = result.error; setListenBroken(true); }
+      notifyRef.current(listenErrorMessage(result.error, window.isSecureContext) + (isFatal ? ' Replies will still be read aloud; tap Talk to try again.' : ''), 'error');
     }
     return result;
   }
 
-  async function listenForMessage(run: number) {
+  async function listenForMessage(run: number, isManual = false) {
     if (!chatRef.current.sessionId) { setPhase('idle'); return; }
-    const result = await listenOnce(run);
+    const result = await listenOnce(run, isManual);
     if (!isCurrent(run)) return;
     if (!result.transcript) { setPhase('idle'); return; }
     handleMessage(run, result.transcript);
@@ -419,7 +427,7 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
 
   return {
     phase, heard, pending, countdown, isOn: phase !== 'off', isRunning: chat.isRunning, hasQuestion: !!suspension && !resolvedRef.current.has(suspension.toolCallId),
-    hasChat: !!chat.sessionId,
+    hasChat: !!chat.sessionId, isListenBroken,
     toggle: () => { if (phaseRef.current === 'off') turnOn(); else turnOff(true); },
     resume: () => turnOn(true),
     talk: () => {
@@ -427,7 +435,7 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
       const run = runRef.current;
       const current = suspensionRef.current;
       if (current && !resolvedRef.current.has(current.toolCallId)) { handledRef.current.delete(current.toolCallId); void askSuspension(run, current); }
-      else void listenForMessage(run);
+      else void listenForMessage(run, true);
     },
     stop: () => { cancelAll(); setPhase('idle'); },
     sendNow: () => { void executePending(); },
@@ -447,7 +455,7 @@ export function VoiceBar({ voice }: { voice: VoiceMode }) {
     : phase === 'confirming' ? `${voice.pending?.label ?? 'Sending'} in ${voice.countdown}…`
     : phase === 'sending' ? 'Sending…'
     : !voice.hasChat ? 'Voice mode · open a chat to talk'
-    : voice.isRunning && !voice.hasQuestion ? 'Voice mode · waiting for the reply' : 'Voice mode · tap Talk to speak';
+    : voice.isRunning && !voice.hasQuestion ? 'Voice mode · waiting for the reply' : voice.isListenBroken ? 'Voice mode · reading aloud only (mic unavailable) · tap Talk to retry' : 'Voice mode · tap Talk to speak';
   const detail = phase === 'listening' ? voice.heard : phase === 'confirming' ? voice.pending?.detail : '';
   return <div role="region" aria-label="Voice mode" {...stylex.props(styles.wrap)}>
     <div {...stylex.props(styles.bar)}>

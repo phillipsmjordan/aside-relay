@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { extractSpeak, setVoiceNoteOn, stripVoiceNote, withVoiceNote, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, speechChunks, splitHead, suspensionSpeech } from '../../web/src/speech.ts'
+import { isFatalListenError, extractSpeak, setVoiceNoteOn, stripVoiceNote, withVoiceNote, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, speechChunks, splitHead, suspensionSpeech } from '../../web/src/speech.ts'
 
 test('speakable text drops markdown syntax, code, tables and urls', () => {
   const md = [
@@ -122,4 +122,9 @@ test('speak summaries: extracted, hidden while streaming, and requested only in 
   assert.equal(stripVoiceNote(sent), 'hello')
   setVoiceNoteOn(false)
   assert.equal(stripVoiceNote('plain'), 'plain')
+})
+
+test('fatal listen errors stop auto-listening, transient ones do not', () => {
+  for (const code of ['network', 'not-allowed', 'service-not-allowed', 'audio-capture', 'unsupported']) assert.equal(isFatalListenError(code), true)
+  for (const code of [undefined, 'no-speech', 'aborted', 'start-failed']) assert.equal(isFatalListenError(code), false)
 })
