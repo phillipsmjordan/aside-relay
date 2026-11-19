@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { matchOption, matchVerdict, parseVoiceIntent, speakableText, speechChunks, splitHead, suspensionSpeech } from '../../web/src/speech.ts'
+import { listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, speechChunks, splitHead, suspensionSpeech } from '../../web/src/speech.ts'
 
 test('speakable text drops markdown syntax, code, tables and urls', () => {
   const md = [
@@ -95,4 +95,14 @@ test('voice choice prefers the phone locale over the first English voice', async
   assert.equal(chooseVoice([{ lang: 'en-AU' }, { lang: 'en-US', default: true }, { lang: 'en-US', localService: true }], ['en-US']), 1)
   assert.equal(chooseVoice([{ lang: 'en-AU' }, { lang: 'en-GB' }], ['en-US']), 0)
   assert.equal(chooseVoice([{ lang: 'fr-FR' }], ['en-US']), -1)
+})
+
+test('mic errors give a specific next step', () => {
+  assert.match(listenErrorMessage('not-allowed'), /lock icon/)
+  assert.match(listenErrorMessage('not-allowed'), /System Settings/)
+  assert.match(listenErrorMessage('audio-capture'), /another app/)
+  assert.match(listenErrorMessage('network'), /online service/)
+  assert.match(listenErrorMessage('service-not-allowed'), /Siri|Dictation/)
+  assert.match(listenErrorMessage('weird'), /weird/)
+  assert.match(listenErrorMessage('not-allowed', false), /https/)
 })

@@ -180,3 +180,26 @@ export function chooseVoice(voices: VoiceLike[], preferred: string[]): number {
   voices.forEach((voice, index) => { const value = score(voice); if (value > bestScore) { best = index; bestScore = value; } });
   return best;
 }
+
+/** Plain-language reason a speech-recognition attempt failed, with what to do about it. */
+export function listenErrorMessage(code: string | undefined, secure = true): string {
+  if (!secure || code === 'unsupported') {
+    return 'Voice input needs a secure (https) page in Chrome, Edge or Safari. Open the relay through its https address.';
+  }
+  switch (code) {
+    case 'not-allowed':
+      return 'Microphone is blocked for this site. Click the lock icon in the address bar and allow Microphone, then tap Talk. On a Mac also check System Settings, Privacy & Security, Microphone, for this browser.';
+    case 'service-not-allowed':
+      return 'This browser is not allowed to use speech recognition. In Safari turn on Siri or Dictation in System Settings; in Chrome allow Microphone for this site.';
+    case 'audio-capture':
+      return 'No working microphone found, or another app is using it. Check System Settings, Sound, Input, then tap Talk.';
+    case 'network':
+      return 'Speech recognition could not reach its online service. Check the connection. Chromium builds without Google speech access (some embedded browsers) cannot do this; use Chrome or Safari.';
+    case 'language-not-supported':
+      return 'This browser does not support speech recognition for your language.';
+    case 'start-failed':
+      return 'Voice input is already starting. Wait a moment and tap Talk again.';
+    default:
+      return `Could not listen (${code ?? 'unknown error'}). Tap Talk to try again.`;
+  }
+}

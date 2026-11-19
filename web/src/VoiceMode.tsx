@@ -6,7 +6,7 @@ import type { SessionWorkspaceState } from './SessionWorkspace';
 import { Button } from './Button';
 import { IconButton, ICON_STROKE } from './ui';
 import { tokens } from './tokens.stylex';
-import { matchOption, matchVerdict, parseVoiceIntent, speakableText, splitHead, suspensionSpeech } from './speech';
+import { listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, splitHead, suspensionSpeech } from './speech';
 import { ApiError } from './chat';
 import { canListen, canSpeak, listen, speak, stopSpeaking, useSpeakingKey, type ListenResult } from './voice';
 
@@ -173,9 +173,7 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
     const result = await session.result;
     if (stopListeningRef.current === session.stop) stopListeningRef.current = undefined;
     if (result.error && isCurrent(run)) {
-      notifyRef.current(result.error === 'not-allowed' || result.error === 'service-not-allowed'
-        ? 'Microphone access is blocked. Allow it for this site, then tap Talk.'
-        : 'Could not listen. Tap Talk to try again.', 'error');
+      notifyRef.current(listenErrorMessage(result.error, window.isSecureContext), 'error');
     }
     return result;
   }
