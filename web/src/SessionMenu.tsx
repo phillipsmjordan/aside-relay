@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import { Archive, ArchiveRestore, Check, Copy, FoldVertical, Files, FolderInput, Link, Mail, MailOpen, Pencil, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, CalendarClock, Check, Copy, FoldVertical, Files, FolderInput, Link, Mail, MailOpen, Pencil, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
 import type { UseChat } from './types';
 import { parseProjects, parseSessionDetails } from './responses';
 import { PopoverMenu } from './PopoverMenu';
@@ -9,18 +9,19 @@ import { ICON_STROKE, RENAME_CONVERSATION_TITLE, SESSION_CHANGE_EVENT, styles as
 import { Button } from './Button';
 import { Dialog, DialogActions, DialogDescription } from './Dialog';
 import { compactSession } from './compact';
+import { RoutinesDialog } from './RoutinesDialog';
 
 export type SessionMenuTarget = { id: string; title: string; anchor: HTMLElement; point?: { x: number; y: number }; archived?: boolean; projectId?: string; unread?: boolean; status?: string };
 type Conversation = { id: string; title: string };
 type Project = { id: string; name: string };
 
-export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles, notify }: {
+export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles, onOpenSession, notify }: {
   target: SessionMenuTarget; chat: UseChat; onClose: () => void; onRename: (session: Conversation) => void; onDelete: (session: Conversation) => void;
-  onFiles?: (sessionId: string) => void;
+  onFiles?: (sessionId: string) => void; onOpenSession?: (sessionId: string) => void;
   notify: (text: string, kind?: 'error' | 'success') => void;
 }) {
   const [details, setDetails] = useState<ReturnType<typeof parseSessionDetails>>();
-  const [dialog, setDialog] = useState<'project' | 'compact'>();
+  const [dialog, setDialog] = useState<'project' | 'compact' | 'routines'>();
   const [isBusy, setBusy] = useState(false);
   const session = chat.sessions.find(session => session.id === target.id);
   const url = new URL('/c/' + encodeURIComponent(target.id), location.origin).href;
@@ -70,6 +71,7 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles
     if (await chat.updateSession(target.id, { isPinned: !isPinned }, { isPinned })) window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
   }
 
+  if (dialog === 'routines') return <RoutinesDialog sessionId={target.id} chat={chat} notify={notify} onClose={onClose} onOpenSession={id => { onOpenSession?.(id); }} />;
   if (dialog === 'compact') return <CompactDialog sessionId={target.id} chat={chat} notify={notify} onClose={onClose} />;
   if (dialog === 'project') return <MoveConversationDialog sessionId={target.id} currentProjectId={target.projectId} chat={chat} notify={notify} onClose={onClose} />;
 
@@ -79,6 +81,7 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, onFiles
     <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); onRename({ id: target.id, title }); }}><Pencil size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Rename</span></button>
     {onFiles && <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); onFiles(target.id); }}><Files size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Files &amp; outputs</span></button>}
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy || ((session?.status ?? target.status ?? details?.status) === 'running' || (target.id === chat.sessionId && chat.isRunning))} onClick={() => { setDialog('compact'); }}><FoldVertical size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Compact context</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { setDialog('routines'); }}><CalendarClock size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Routines</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { setDialog('project'); }}><FolderInput size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Move to project</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { void mutateNative(isUnread ? '/read' : '/unread', isUnread ? 'Marked as read.' : 'Marked as unread.'); }}>{isUnread ? <MailOpen size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Mail size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{isUnread ? 'Mark as read' : 'Mark as unread'}</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { void mutateNative(target.archived ? '/unarchive' : '/archive', target.archived ? 'Conversation restored.' : 'Conversation archived.'); }}>{target.archived ? <ArchiveRestore size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Archive size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{target.archived ? 'Unarchive' : 'Archive'}</span></button>
