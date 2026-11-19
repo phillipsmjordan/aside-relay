@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { stripVoiceNote } from './speech';
 import * as stylex from '@stylexjs/stylex';
 import { CornerDownRight, Ellipsis, FileText, ListEnd, Pencil, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -95,7 +96,7 @@ export function QueuedBubble({ message, index, chat, isEditing, isAnotherEditing
       if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); buttons[event.key === 'Home' ? 0 : buttons.length - 1]?.focus(); }
       if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.hidePopover(); triggerRef.current?.focus({ preventScroll: true }); }
     }}>
-      <p {...stylex.props(styles.menuTitle)}>{message.prompt || 'Attached images'}</p>
+      <p {...stylex.props(styles.menuTitle)}>{stripVoiceNote(message.prompt) || 'Attached images'}</p>
       <button type="button" role="menuitem" disabled={isBusy || !!isHeldElsewhere} {...stylex.props(styles.menuItem)} onClick={() => { void runAction('edit'); }}><Pencil size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />Edit message</button>
       <button type="button" role="menuitem" disabled={isBusy || !!isHeldElsewhere} {...stylex.props(styles.menuItem)} onClick={() => { void runAction('steer'); }}><CornerDownRight size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />{chat.isRunning ? 'Steer instead' : 'Send now'}</button>
       <button type="button" role="menuitem" disabled={isBusy} {...stylex.props(styles.menuItem, styles.danger)} onClick={() => { void runAction('delete'); }}><Trash2 size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />Cancel message</button>

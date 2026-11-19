@@ -6,7 +6,7 @@ import type { SessionWorkspaceState } from './SessionWorkspace';
 import { Button } from './Button';
 import { IconButton, ICON_STROKE } from './ui';
 import { tokens } from './tokens.stylex';
-import { listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, splitHead, suspensionSpeech } from './speech';
+import { extractSpeak, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, setVoiceNoteOn, speakableText, splitHead, suspensionSpeech } from './speech';
 import { ApiError } from './chat';
 import { canListen, canSpeak, listen, speak, stopSpeaking, useSpeakingKey, type ListenResult } from './voice';
 
@@ -86,7 +86,7 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
   const wasRunningRef = useRef(chat.isRunning);
   chatRef.current = chat; suspensionRef.current = suspension; notifyRef.current = notify; onEditRef.current = onEdit; onOpenSessionRef.current = onOpenSession;
 
-  function setPhase(next: Phase) { phaseRef.current = next; setPhaseState(next); }
+  function setPhase(next: Phase) { phaseRef.current = next; setPhaseState(next); setVoiceNoteOn(next !== 'off' && next !== 'paused'); }
   function isCurrent(run: number) { return run === runRef.current && phaseRef.current !== 'off' && phaseRef.current !== 'paused'; }
 
   function cancelAll() {
@@ -204,11 +204,14 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
 
   async function speakReply(run: number, reply: Reply, isRepeat = false) {
     if (!isRepeat) { spokenRef.current.add(reply.key); spokenRef.current.add(reply.text); lastReplyRef.current = reply.text; }
-    const { head, rest } = splitHead(speakableText(reply.text));
+    const { display, spoken } = extractSpeak(reply.text);
+    const full = speakableText(display);
+    // A <speak> summary is read first; the full reply is offered afterwards. Without one, read the opening and offer the rest.
+    const { head, rest } = spoken ? { head: spoken, rest: full.length > spoken.length * 1.5 ? full : '' } : splitHead(full);
     setPhase('speaking');
     if (!await speak(VOICE_KEY, head, { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
     if (rest) {
-      if (!await speak(VOICE_KEY, 'Want the rest?', { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
+      if (!await speak(VOICE_KEY, spoken ? 'Want the full reply?' : 'Want the rest?', { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
       const answer = await listenOnce(run);
       if (!isCurrent(run)) return;
       const intent = parseVoiceIntent(answer.transcript);
@@ -240,7 +243,7 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
     if (reply && !spokenRef.current.has(reply.key) && !spokenRef.current.has(reply.text)) {
       spokenRef.current.add(reply.key); spokenRef.current.add(reply.text); lastReplyRef.current = reply.text;
       setPhase('speaking');
-      if (!await speak(VOICE_KEY, splitHead(speakableText(reply.text)).head, { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
+      if (!await speak(VOICE_KEY, extractSpeak(reply.text).spoken || splitHead(speakableText(extractSpeak(reply.text).display)).head, { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
     }
     if (current.kind === 'ask-user-question') {
       const answers: { header: string; answer: string }[] = [];
@@ -466,7 +469,8 @@ export function VoiceBar({ voice }: { voice: VoiceMode }) {
   </div>;
 }
 
-export function ReadAloudButton({ id, text }: { id: string; text: string }) {
+export function ReadAloudButton({ id, text: rawText }: { id: string; text: string }) {
+  const text = extractSpeak(rawText).display;
   const speakingKey = useSpeakingKey();
   const key = `message:${id}`;
   if (!canSpeak || !text.trim()) return null;

@@ -13,6 +13,7 @@ import type { ChatMessage, UseChat } from './types';
 import { tokens } from './tokens.stylex';
 import { CITATION_TITLE_PREFIX, formatCitations } from './citations';
 import { ICON_STROKE, IconButton, styles as ui } from './ui';
+import { extractSpeak, stripVoiceNote } from './speech';
 import { VISUAL_MESSAGE_PREFIX, visualDocument, visualTheme } from './visual';
 import { Activity } from './Activity';
 import { useMessageMenu } from './useMessageMenu';
@@ -131,10 +132,10 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   const sources = [...new Map(messages.flatMap(message => message.sources ?? []).map(source => [source.id, source])).values()];
   const messageById = new Map(messages.map(message => [String(message.seq), message]));
   const { handlers, menu, selectableId } = useMessageMenu({ textForMessage: id => {
-    if (liveAssistant?.streamId === id) return formatCitations({ text: liveAssistant.text, sources, isStreaming: !liveAssistant.done });
+    if (liveAssistant?.streamId === id) return formatCitations({ text: extractSpeak(liveAssistant.text).display, sources, isStreaming: !liveAssistant.done });
     const message = messageById.get(id);
     if (!message) return '';
-    return message.role === 'user' ? messageText(message).replace(attachmentPrompt, '') : formatCitations({ text: messageText(message), sources });
+    return message.role === 'user' ? stripVoiceNote(messageText(message)).replace(attachmentPrompt, '') : formatCitations({ text: extractSpeak(messageText(message)).display, sources });
   }, notify, sessionId: chat.sessionId, request: chat.request, onOpenSession,
     onRefreshMessages: async () => { await chat.refreshMessages(); }, onComposeContext, onAskSidechat,
     onNavigateTurns: () => setNavigatingTurns(true) });
@@ -206,17 +207,17 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   function renderGroup(group: typeof groups[number]) {
     if (group.kind === 'activity') return <Activity messages={group.messages} results={results} onZoom={onZoom} expanded={expanded} onExpandedChange={changeExpanded} onOpenSession={onOpenSession} agentIds={agentIds} />;
     if (group.kind === 'pending') return <article aria-label="Sending message" {...stylex.props(styles.message, styles.user)}>{chat.pendingAttachments.map(attachment => attachment.mime.startsWith('image/') ? <img key={attachment.id} src={attachment.url} alt={attachment.name} {...stylex.props(styles.image)} /> : <a key={attachment.id} href={attachment.url} target="_blank" rel="noopener noreferrer" {...stylex.props(styles.fileAttachment)}><FileText size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>{attachment.name}</span></a>)}<div {...stylex.props(styles.userText)}>{pendingPrompt}</div></article>;
-    if (group.kind === 'live' && liveAssistant) return <article data-message-id={liveAssistant.streamId} data-message-role="assistant" data-selectable={selectableId === liveAssistant.streamId} tabIndex={0} aria-haspopup="menu" aria-keyshortcuts="Shift+F10" aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)}><ResponseMarkdown text={formatCitations({ text: liveAssistant.text, sources, isStreaming: !liveAssistant.done })} sessionId={chat.sessionId} isStreaming={!liveAssistant.done} notify={notify} onZoom={onZoom} onAction={liveAssistant.done ? onDraftAction : undefined} /></article>;
+    if (group.kind === 'live' && liveAssistant) return <article data-message-id={liveAssistant.streamId} data-message-role="assistant" data-selectable={selectableId === liveAssistant.streamId} tabIndex={0} aria-haspopup="menu" aria-keyshortcuts="Shift+F10" aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)}><ResponseMarkdown text={formatCitations({ text: extractSpeak(liveAssistant.text).display, sources, isStreaming: !liveAssistant.done })} sessionId={chat.sessionId} isStreaming={!liveAssistant.done} notify={notify} onZoom={onZoom} onAction={liveAssistant.done ? onDraftAction : undefined} /></article>;
     if (group.kind === 'working') return <div role="status" aria-label="Working" {...stylex.props(styles.working)}><motion.span {...stylex.props(styles.pulse)} animate={{ opacity: shouldReduceMotion ? 1 : [.4, 1, .4] }} transition={{ duration: 1.2, repeat: shouldReduceMotion ? 0 : Infinity }} />Working…</div>;
     if (group.kind === 'waiting') return <div role="status" aria-label="Waiting for your answer" {...stylex.props(styles.working)}>Waiting for your answer…</div>;
     if (group.kind === 'queue') {
       const message = chat.queuedMessages[group.index];
-      return <QueuedBubble message={message} index={group.index} chat={chat} isEditing={editingId === message.id} isAnotherEditing={hasEditor && editingId !== message.id} editText={editText} onEditTextChange={setEditText} onEditingChange={(isEditing, text) => { if (isEditing) setEditText(text ?? message.prompt); setEditingId(isEditing ? message.id : undefined); }} />;
+      return <QueuedBubble message={message} index={group.index} chat={chat} isEditing={editingId === message.id} isAnotherEditing={hasEditor && editingId !== message.id} editText={editText} onEditTextChange={setEditText} onEditingChange={(isEditing, text) => { if (isEditing) setEditText(text ?? stripVoiceNote(message.prompt)); setEditingId(isEditing ? message.id : undefined); }} />;
     }
     if (group.kind === 'paused') return <div role="status" {...stylex.props(styles.working)}>Queue paused<Button disabled={chat.isUpdatingQueue} onClick={() => { void chat.resumeQueue(); }}>Resume</Button></div>;
     if (group.kind !== 'message') return;
     const message = group.message;
-    const raw = messageText(message);
+    const raw = message.role === 'user' ? stripVoiceNote(messageText(message)) : extractSpeak(messageText(message)).display;
     const attachmentMatch = raw.match(attachmentPrompt);
     const text = message.role === 'user' ? attachmentMatch ? raw.slice(attachmentMatch[0].length) : raw : formatCitations({ text: raw, sources });
     const attachments = attachmentMatch ? attachmentMatch[1].trim().split('\n').flatMap(line => { const match = line.match(/^- (.*) → (.+\/([^/]+))$/); return match ? [{ name: match[1], src: '/api/upload/' + encodeURIComponent(match[3]) }] : []; }) : [];

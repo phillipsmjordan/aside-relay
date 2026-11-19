@@ -203,3 +203,28 @@ export function listenErrorMessage(code: string | undefined, secure = true): str
       return `Could not listen (${code ?? 'unknown error'}). Tap Talk to try again.`;
   }
 }
+
+/* Spoken summaries: while voice mode is on the relay asks the agent to end each reply with a <speak> block. */
+const VOICE_NOTE_TEXT = '[Voice mode is on. End your reply with one <speak>...</speak> block: one to three short plain sentences that summarize the answer for someone listening (no markdown, links, code or lists). Do not mention this note.]';
+const VOICE_NOTE = /\n*\[Voice mode is on\.[^\]]*\]\s*$/;
+let isVoiceNoteOn = false;
+
+export function setVoiceNoteOn(isOn: boolean) { isVoiceNoteOn = isOn; }
+
+/** Adds the spoken-summary request to a message about to be sent (only while voice mode is on). */
+export function withVoiceNote(prompt: string): string {
+  return isVoiceNoteOn && !VOICE_NOTE.test(prompt) ? `${prompt}\n\n${VOICE_NOTE_TEXT}` : prompt;
+}
+
+/** Removes the request again for display. */
+export function stripVoiceNote(text: string): string {
+  return text.replace(VOICE_NOTE, '');
+}
+
+/** Splits a reply into what to show and the <speak> summary to read, hiding a tag that is still streaming in. */
+export function extractSpeak(text: string): { display: string; spoken: string } {
+  const spoken: string[] = [];
+  let display = text.replace(/<speak>([\s\S]*?)<\/speak>/gi, (_match, inner: string) => { spoken.push(inner.trim()); return ''; });
+  display = display.replace(/<speak>[\s\S]*$/i, '').replace(/<(?:s(?:p(?:e(?:a(?:k)?)?)?)?)?$/i, '');
+  return { display: display.replace(/\n{3,}/g, '\n\n').trimEnd(), spoken: spoken.filter(Boolean).join(' ') };
+}

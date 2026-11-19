@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, speechChunks, splitHead, suspensionSpeech } from '../../web/src/speech.ts'
+import { extractSpeak, setVoiceNoteOn, stripVoiceNote, withVoiceNote, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, speakableText, speechChunks, splitHead, suspensionSpeech } from '../../web/src/speech.ts'
 
 test('speakable text drops markdown syntax, code, tables and urls', () => {
   const md = [
@@ -105,4 +105,21 @@ test('mic errors give a specific next step', () => {
   assert.match(listenErrorMessage('service-not-allowed'), /Siri|Dictation/)
   assert.match(listenErrorMessage('weird'), /weird/)
   assert.match(listenErrorMessage('not-allowed', false), /https/)
+})
+
+test('speak summaries: extracted, hidden while streaming, and requested only in voice mode', () => {
+  const reply = 'Here is the long answer.\n\n<speak>Short version. It works.</speak>'
+  assert.deepEqual(extractSpeak(reply), { display: 'Here is the long answer.', spoken: 'Short version. It works.' })
+  assert.deepEqual(extractSpeak('Answer text\n\n<speak>Half a sum'), { display: 'Answer text', spoken: '' })
+  assert.equal(extractSpeak('Answer <spe').display, 'Answer')
+  assert.equal(extractSpeak('a < b and <speaker> x').display, 'a < b and <speaker> x')
+  assert.equal(extractSpeak('No tag here').spoken, '')
+  assert.equal(withVoiceNote('hello'), 'hello')
+  setVoiceNoteOn(true)
+  const sent = withVoiceNote('hello')
+  assert.match(sent, /<speak>/)
+  assert.equal(withVoiceNote(sent), sent)
+  assert.equal(stripVoiceNote(sent), 'hello')
+  setVoiceNoteOn(false)
+  assert.equal(stripVoiceNote('plain'), 'plain')
 })

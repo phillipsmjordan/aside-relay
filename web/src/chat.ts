@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { formatRequestError } from "./errors"
 import { useAutoRefresh } from "./useAutoRefresh"
 import { SESSION_CHANGE_EVENT } from "./ui"
+import { withVoiceNote } from "./speech"
 import {
   isRecord,
   parseChatMessage,
@@ -1081,6 +1082,7 @@ export const useChat = (): UseChat => {
     async (prompt: string, attachments: UploadAttachment[] = [], model?: ModelConfig, options?: RunOptions) => {
       const text = prompt.trim()
       if (!text && attachments.length === 0) return false
+      const wireText = text ? withVoiceNote(text) : text
       const selectedSessionId = sessionIdRef.current
       if (activeSendRef.current) return false
       const generation = openGenerationRef.current
@@ -1118,10 +1120,10 @@ export const useChat = (): UseChat => {
                       op: "continue",
                       requestId,
                       sessionId: selectedSessionId,
-                      prompt: text,
+                      prompt: wireText,
                       attachments: payloadAttachments,
                     }
-                  : { op: "run", requestId, prompt: text, attachments: payloadAttachments, ...modelOptions, ...runOptions },
+                  : { op: "run", requestId, prompt: wireText, attachments: payloadAttachments, ...modelOptions, ...runOptions },
               ),
             )
           })
@@ -1132,7 +1134,7 @@ export const useChat = (): UseChat => {
             : "/api/runs"
           const result = await api(path, parseStartedRun, {
             method: "POST",
-            body: JSON.stringify({ prompt: text, attachments: payloadAttachments, ...modelOptions, ...runOptions }),
+            body: JSON.stringify({ prompt: wireText, attachments: payloadAttachments, ...modelOptions, ...runOptions }),
           })
           if (
             activeSendRef.current !== requestId ||
@@ -1249,7 +1251,7 @@ export const useChat = (): UseChat => {
     const id = followupRequestRef.current.id
     followupRequestRef.current = undefined
     const accepted = await mutateQueue({
-      suffix: "followups", method: "POST", body: { id, prompt: prompt.trim(), attachments: payloadAttachments, delivery: shouldSteer ? "steer" : "queue" },
+      suffix: "followups", method: "POST", body: { id, prompt: prompt.trim() ? withVoiceNote(prompt.trim()) : prompt.trim(), attachments: payloadAttachments, delivery: shouldSteer ? "steer" : "queue" },
       update: state => ({ ...state, items: [...state.items.filter(item => item.id !== id), { id, prompt: prompt.trim(), attachments, status: "queued" }] }),
     })
     if (!accepted) followupRequestRef.current = { key: JSON.stringify({ sessionId: sessionIdRef.current, prompt, attachments: payloadAttachments, shouldSteer }), id }
