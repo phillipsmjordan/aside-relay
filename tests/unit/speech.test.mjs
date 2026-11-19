@@ -139,3 +139,11 @@ test('speak tags mentioned inside code are left alone', () => {
   assert.deepEqual(extractSpeak('Mentions `<speak>` here.\n\n<speak>Real one.</speak>'), { display: 'Mentions `<speak>` here.', spoken: 'Real one.' })
   assert.equal(extractSpeak('Answer\n\n<speak>Half a sum').display, 'Answer')
 })
+
+test('a bare speak tag mid-sentence does not hide the rest; a streaming block on its own line still does', () => {
+  const prose = 'Use the <speak> tag at the end, then keep writing normally after it.'
+  assert.equal(extractSpeak(prose).display, prose)
+  assert.equal(extractSpeak('Answer text.\n\n<speak>Half a sum').display, 'Answer text.')
+  assert.equal(extractSpeak('Answer text.\n\n<spe').display, 'Answer text.')
+  assert.equal(extractSpeak('Answer text.\n\n<speak>Done.</speak>').spoken, 'Done.')
+})

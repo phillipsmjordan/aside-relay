@@ -29,7 +29,7 @@ from pathlib import Path
 # The real home directory, even when HOME is redirected (as in sandboxed shells).
 TOKEN_FILE = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".aside-relay" / "token"
 SPEAK = re.compile(r"<speak>([\s\S]*?)</speak>", re.I)
-OPEN_SPEAK = re.compile(r"<speak>[\s\S]*$", re.I)
+OPEN_SPEAK = re.compile(r"(?:^|\n)[ \t]*<speak>[\s\S]*$", re.I)
 NOTE = re.compile(r"\n*\[Voice mode is on\.[^\]]*\]\s*$")
 
 

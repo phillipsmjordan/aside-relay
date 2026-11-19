@@ -235,6 +235,7 @@ export function extractSpeak(text: string): { display: string; spoken: string } 
   const restore = (value: string) => value.replace(/\uE000(\d+)\uE001/g, (_match, index: string) => code[Number(index)] ?? '');
   const spoken: string[] = [];
   let display = masked.replace(/<speak>([\s\S]*?)<\/speak>/gi, (_match, inner: string) => { spoken.push(restore(inner).trim()); return ''; });
-  display = display.replace(/<speak>[\s\S]*$/i, '').replace(/<(?:s(?:p(?:e(?:a(?:k)?)?)?)?)?$/i, '');
+  // A block still streaming in starts its own line; a bare "<speak>" in the middle of a sentence is just talk about the tag.
+  display = display.replace(/(^|\n)[ \t]*<speak>[\s\S]*$/i, '$1').replace(/[ \t]*<(?:s(?:p(?:e(?:a(?:k)?)?)?)?)?$/i, '');
   return { display: restore(display).replace(/\n{3,}/g, '\n\n').trimEnd(), spoken: spoken.filter(Boolean).join(' ') };
 }
