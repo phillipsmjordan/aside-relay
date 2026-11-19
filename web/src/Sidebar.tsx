@@ -10,6 +10,7 @@ import type { SessionMenuTarget } from './SessionMenu';
 import { tokens } from './tokens.stylex';
 import { DEFAULT_RECENT_CHAT_LIMIT, ICON_STROKE, SESSION_CHANGE_EVENT, BrowserIcon, IconButton, styles as ui } from './ui';
 import { Button } from './Button';
+import { projectSections } from './sidebarSections';
 import { useAutoRefresh } from './useAutoRefresh';
 
 const NATIVE_PAGE_SIZE = 50;
@@ -122,11 +123,10 @@ export function Sidebar({ chat, isDrawer, onClose, onNew, onNewIncognito, onOpen
     return () => window.removeEventListener(SESSION_CHANGE_EVENT, refresh);
   }, []);
   useEffect(() => {
-    if (!isShowingAll) return;
     const controller = new AbortController();
     void chat.request('/api/native/projects', { cache: 'no-store', signal: controller.signal }).then(response => response.json()).then(value => { if (!controller.signal.aborted) setProjects(parseProjects(value).filter(project => !project.archivedAt)); }).catch(() => undefined);
     return () => controller.abort();
-  }, [chat.request, isShowingAll]);
+  }, [chat.request]);
   const visibleSessions: SidebarSession[] = isExpanded ? nativeSessions.filter(session => !!session.archived === (view === 'archived')) : [...pinnedSessions, ...recentSessions.slice(0, recentLimit)];
   const press = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> } | undefined>(undefined);
   const hasLongPressed = useRef(false);
@@ -159,11 +159,10 @@ export function Sidebar({ chat, isDrawer, onClose, onNew, onNewIncognito, onOpen
     const session = visibleSessions.find(session => session.id === anchor?.dataset.sessionId);
     return anchor && session ? { id: session.id, title: session.title, anchor, archived: session.archived, projectId: session.projectId, unread: session.unread, status: session.status } : undefined;
   }
-  let lastGroup = '';
-  const rows: SidebarRow[] = visibleSessions.flatMap(session => {
-    const group = view === 'active' && session.isPinned ? 'Pinned' : dateGroup(session.mtime); const hasHeading = group !== lastGroup; lastGroup = group;
-    return [...(hasHeading ? [{ kind: 'heading' as const, group }] : []), { kind: 'session' as const, session }];
-  });
+  const rows: SidebarRow[] = projectSections(visibleSessions, projects, sort, view === 'active').flatMap(section => [
+    { kind: 'heading' as const, group: section.title },
+    ...section.sessions.map(session => ({ kind: 'session' as const, session })),
+  ]);
   if (isExpanded && (nextCursor != null || isLoadingMoreNative)) rows.push({ kind: 'more' });
   return <aside {...stylex.props(styles.sidebar)} aria-label="Conversations" onPointerDown={event => {
     cancelPress(); hasLongPressed.current = false;
@@ -209,13 +208,6 @@ export function Sidebar({ chat, isDrawer, onClose, onNew, onNewIncognito, onOpen
 }
 
 const recentSessionListComponents = {};
-
-function dateGroup(seconds: number) {
-  const date = new Date(seconds * 1000); const today = new Date(); today.setHours(0, 0, 0, 0);
-  const difference = today.getTime() - date.getTime();
-  if (difference < 0) return 'Today'; if (difference < 86_400_000) return 'Yesterday'; if (difference < 6 * 86_400_000) return 'Previous 7 days';
-  return date.toLocaleDateString('en-US', { month: 'long', year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
-}
 
 function nativeQueryKey({ view, sort, projectId, status, query }: { view: 'active' | 'archived'; sort: 'newest' | 'oldest'; projectId: string; status: StatusFilter; query: string }) {
   return [view, sort, projectId, status, query.trim()].join('\n');
