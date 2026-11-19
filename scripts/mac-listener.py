@@ -77,8 +77,8 @@ class Relay:
     def sessions(self) -> list[dict]:
         return self.get("/api/sessions?limit=60").get("items", [])
 
-    def last_reply(self, session_id: str) -> tuple[int, str] | None:
-        """(seq, text) of the newest assistant message that came after the last user message."""
+    def last_reply(self, session_id: str) -> tuple[int, str, float] | None:
+        """(seq, text, time in ms) of the newest assistant message after the last user message."""
         messages = self.get(f"/api/sessions/{session_id}/messages?tail=40").get("messages", [])
         last_user = max((m["seq"] for m in messages if m.get("role") == "user"), default=-1)
         for message in reversed(messages):
@@ -86,17 +86,20 @@ class Relay:
                 continue
             text = "\n".join(b.get("text", "") for b in message.get("blocks", []) if b.get("type") == "text").strip()
             if text:
-                return message["seq"], text
+                return message["seq"], text, float(message.get("ts") or 0)
         return None
 
 
 def finished(previous: dict, current: dict) -> bool:
+    """True when a chat may have a new reply: it stopped running, or it changed while idle.
+
+    A chat that is open in the relay is marked read at once, and short replies can start and end
+    between two polls, so "idle and updated since last time" counts. The caller then checks the
+    reply's own timestamp, so renames and other edits never trigger speech.
+    """
     if current.get("status") in ("running", "errored", "suspended"):
         return False
-    if previous.get("status") == "running":
-        return True
-    # Short runs can start and end between two polls, so a fresh unread reply on an idle chat counts too.
-    return bool(current.get("unread")) and not previous.get("unread") and current.get("mtime", 0) > previous.get("mtime", 0)
+    return previous.get("status") == "running" or current.get("mtime", 0) > previous.get("mtime", 0)
 
 
 def main() -> int:
@@ -109,6 +112,7 @@ def main() -> int:
     parser.add_argument("--routines", action="store_true", help="also read chats titled 'Routine: ...'")
     parser.add_argument("--no-title", action="store_true", help="do not say which chat it came from")
     parser.add_argument("--quiet", metavar="HH:MM-HH:MM", help="stay silent in this window, e.g. 00:00-12:00")
+    parser.add_argument("--verbose", action="store_true", help="say why a reply was or was not spoken")
     parser.add_argument("--dry-run", action="store_true", help="print instead of speaking")
     parser.add_argument("--once", type=int, metavar="N", help="exit after speaking N replies (for tests)")
     args = parser.parse_args()
@@ -116,8 +120,10 @@ def main() -> int:
     relay = Relay(args.base, TOKEN_FILE.read_text().strip())
     seen: dict[str, dict] = {}
     spoken: set[tuple[str, int]] = set()
+    started_ms = time.time() * 1000 - 2000  # only replies written after the listener started
     count = 0
-    print(f"Listening to {args.base} (voice {args.voice}{', dry run' if args.dry_run else ''}). Ctrl-C to stop.", flush=True)
+    is_first_pass = True
+    print(f"Listening to {args.base} (voice {args.voice}{', dry run' if args.dry_run else ''}). Waiting for a chat to finish; Ctrl-C to stop.", flush=True)
     while True:
         try:
             items = relay.sessions()
@@ -128,15 +134,19 @@ def main() -> int:
         for item in items:
             previous = seen.get(item["id"])
             seen[item["id"]] = item
+            if previous is None and not is_first_pass:
+                previous = {"status": "idle", "mtime": 0}  # a brand-new chat that already finished
             if previous is None or not finished(previous, item):
-                continue  # first sighting is a baseline, never spoken
-            title = item.get("title") or "a chat"
+                continue  # the first pass is only a baseline
+            title = re.sub(r"\s*\[Voi.*$", "", item.get("title") or "").strip().rstrip(".") or "a chat"
             if args.project and item.get("projectId") not in args.project:
                 continue
             if title.startswith("Routine:") and not args.routines:
                 continue
             reply = relay.last_reply(item["id"])
-            if not reply or (item["id"], reply[0]) in spoken:
+            if not reply or (item["id"], reply[0]) in spoken or reply[2] < started_ms:
+                if args.verbose:
+                    print(f"  skip {item['id']} ({title}): no new reply", flush=True)
                 continue
             spoken.add((item["id"], reply[0]))
             text = extract_spoken(NOTE.sub("", reply[1]))
@@ -149,6 +159,7 @@ def main() -> int:
             count += 1
             if args.once and count >= args.once:
                 return 0
+        is_first_pass = False
         time.sleep(args.interval)
 
 
