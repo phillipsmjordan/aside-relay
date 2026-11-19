@@ -226,10 +226,15 @@ export function stripVoiceNote(text: string): string {
   return text.replace(VOICE_NOTE, '');
 }
 
-/** Splits a reply into what to show and the <speak> summary to read, hiding a tag that is still streaming in. */
+/** Splits a reply into what to show and the <speak> summary to read, hiding a tag that is still streaming in.
+ *  Tags inside code (`<speak>` or a fenced block) are just text about the tag, so they are left alone. */
 export function extractSpeak(text: string): { display: string; spoken: string } {
+  if (!/<(?:s(?:p(?:e(?:a(?:k)?)?)?)?)?$|<speak/i.test(text)) return { display: text, spoken: '' };
+  const code: string[] = [];
+  const masked = text.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`/g, match => { code.push(match); return `\uE000${code.length - 1}\uE001`; });
+  const restore = (value: string) => value.replace(/\uE000(\d+)\uE001/g, (_match, index: string) => code[Number(index)] ?? '');
   const spoken: string[] = [];
-  let display = text.replace(/<speak>([\s\S]*?)<\/speak>/gi, (_match, inner: string) => { spoken.push(inner.trim()); return ''; });
+  let display = masked.replace(/<speak>([\s\S]*?)<\/speak>/gi, (_match, inner: string) => { spoken.push(restore(inner).trim()); return ''; });
   display = display.replace(/<speak>[\s\S]*$/i, '').replace(/<(?:s(?:p(?:e(?:a(?:k)?)?)?)?)?$/i, '');
-  return { display: display.replace(/\n{3,}/g, '\n\n').trimEnd(), spoken: spoken.filter(Boolean).join(' ') };
+  return { display: restore(display).replace(/\n{3,}/g, '\n\n').trimEnd(), spoken: spoken.filter(Boolean).join(' ') };
 }

@@ -128,3 +128,14 @@ test('fatal listen errors stop auto-listening, transient ones do not', () => {
   for (const code of ['network', 'not-allowed', 'service-not-allowed', 'audio-capture', 'unsupported']) assert.equal(isFatalListenError(code), true)
   for (const code of [undefined, 'no-speech', 'aborted', 'start-failed']) assert.equal(isFatalListenError(code), false)
 })
+
+test('speak tags mentioned inside code are left alone', () => {
+  const inline = 'The rule ends every reply with a `<speak>...</speak>` block. More text after.'
+  assert.deepEqual(extractSpeak(inline), { display: inline, spoken: '' })
+  const open = 'Use `<speak>` as the opening tag, then more explanation here.'
+  assert.deepEqual(extractSpeak(open), { display: open, spoken: '' })
+  const fenced = 'Fenced:\n```\n<speak>x</speak>\n```\nAfter fence.\n\n<speak>Real summary.</speak>'
+  assert.deepEqual(extractSpeak(fenced), { display: 'Fenced:\n```\n<speak>x</speak>\n```\nAfter fence.', spoken: 'Real summary.' })
+  assert.deepEqual(extractSpeak('Mentions `<speak>` here.\n\n<speak>Real one.</speak>'), { display: 'Mentions `<speak>` here.', spoken: 'Real one.' })
+  assert.equal(extractSpeak('Answer\n\n<speak>Half a sum').display, 'Answer')
+})

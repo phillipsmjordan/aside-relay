@@ -35,10 +35,21 @@ NOTE = re.compile(r"\n*\[Voice mode is on\.[^\]]*\]\s*$")
 
 def extract_spoken(text: str, max_chars: int = 320) -> str:
     """The <speak> summary if present, otherwise the first two sentences of the plain reply."""
-    tagged = [part.strip() for part in SPEAK.findall(text) if part.strip()]
+    # Tags inside code spans or fences are talk about the tag, not the tag itself.
+    code: list[str] = []
+
+    def mask(match: re.Match) -> str:
+        code.append(match.group(0))
+        return f"\ue000{len(code) - 1}\ue001"
+
+    def restore(value: str) -> str:
+        return re.sub("\ue000(\\d+)\ue001", lambda m: code[int(m.group(1))], value)
+
+    text = re.sub(r"```[\s\S]*?(?:```|$)|`[^`\n]*`", mask, text)
+    tagged = [restore(part).strip() for part in SPEAK.findall(text) if part.strip()]
     if tagged:
         return " ".join(tagged)
-    plain = OPEN_SPEAK.sub("", text)
+    plain = restore(OPEN_SPEAK.sub("", text))
     plain = re.sub(r"```[\s\S]*?```", " ", plain)            # code blocks
     plain = re.sub(r"`([^`]*)`", r"\1", plain)                # inline code
     plain = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", plain)  # links and images
