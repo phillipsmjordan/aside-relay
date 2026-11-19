@@ -24,6 +24,16 @@ MAX_PUSH_PAYLOAD_BYTES = 4096 - 103  # AES128GCM header, authentication tag and 
 SUBSCRIPTION_LIMIT = 64
 PUSH_HOSTS = ("web.push.apple.com", "fcm.googleapis.com", "updates.push.services.mozilla.com")
 INVALID_SUBSCRIPTION = "Invalid notification subscription."
+# Current Chrome/Chromium hand out FCM addresses such as https://jmt17.google.com/fcm/send/<token>.
+GOOGLE_FCM_HOST = re.compile(r"^[a-z0-9-]+\.google\.com$")
+
+
+def _is_push_host(url) -> bool:
+    """Known push services only: the relay's server posts to this address, so it must not be arbitrary."""
+    host = url.hostname or ""
+    return (host in PUSH_HOSTS
+            or host.endswith(".notify.windows.com")
+            or (bool(GOOGLE_FCM_HOST.match(host)) and url.path.startswith("/fcm/send/")))
 
 
 def _decode_key(value: object, length: int) -> bytes:
@@ -50,9 +60,7 @@ def validate_subscription(payload: dict) -> dict:
     try:
         push_url = urlsplit(endpoint)
         app_url = urlsplit(origin)
-        is_push_host = push_url.hostname in PUSH_HOSTS or bool(
-            push_url.hostname and push_url.hostname.endswith(".notify.windows.com")
-        )
+        is_push_host = _is_push_host(push_url)
         is_local_origin = app_url.scheme == "http" and app_url.hostname in ("localhost", "127.0.0.1", "::1")
         if (push_url.scheme != "https" or not is_push_host or push_url.port not in (None, 443)
                 or push_url.username or push_url.password or push_url.fragment

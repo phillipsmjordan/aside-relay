@@ -37,7 +37,18 @@ class WebPushTest(support.IsolatedBackendTest):
         self.assertEqual(normalized["origin"], "https://aside.example")
         self.assertEqual(normalized["subscription"]["endpoint"], valid["subscription"]["endpoint"])
 
+        for endpoint in ("https://jmt17.google.com/fcm/send/abc123", "https://fcm.googleapis.com/fcm/send/abc123"):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(web_push.validate_subscription(subscription(endpoint))["subscription"]["endpoint"], endpoint)
+
         invalid = [
+            subscription("https://www.google.com/search?q=x"),
+            subscription("https://jmt17.google.com/other/path"),
+            subscription("https://jmt17.google.com.attacker.example/fcm/send/abc"),
+            subscription("https://a.b.google.com/fcm/send/abc"),
+            subscription("https://google.com/fcm/send/abc"),
+            subscription("http://jmt17.google.com/fcm/send/abc"),
+            subscription("https://evilgoogle.com/fcm/send/abc"),
             subscription("http://web.push.apple.com/device/one"),
             subscription("https://127.0.0.1/push"),
             subscription("https://web.push.apple.com.attacker.example/push"),

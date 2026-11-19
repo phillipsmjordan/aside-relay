@@ -1,6 +1,7 @@
 import { APP_NAME } from './brand';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UseChat } from './types';
+import { ApiError } from './chat';
 
 const PRESENCE_INTERVAL_MS = 10_000;
 const NOTIFICATION_TIMEOUT_MS = 10_000;
@@ -168,7 +169,7 @@ export function usePushNotifications(chat: UseChat, notify: (text: string, kind?
       setSubscriptionId(id);
       setStatus('enabled');
       notify('Notifications enabled.', 'success');
-    } catch { notify(ENABLE_ERROR, 'error'); }
+    } catch (error) { notify(error instanceof ApiError && error.status === 400 ? 'The relay does not accept this browser\'s notification address.' : ENABLE_ERROR, 'error'); }
     finally { isActingRef.current = false; setUpdating(false); }
   }
 
