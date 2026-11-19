@@ -69,6 +69,8 @@
   @starting-style { .queued-message-menu:popover-open, .message-menu:popover-open, .session-menu:popover-open { opacity: 0; } }
   article[data-message-id] { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
   article[data-selectable="true"], article[data-selectable="true"] *, pre, pre *, code, code * { -webkit-touch-callout: default; user-select: text; -webkit-user-select: text; }
+  /* Phones keep select-on-demand (long press); with a mouse, drag-select and copy just work. */
+  @media (hover: hover) and (pointer: fine) { article[data-message-id], article[data-message-id] * { user-select: text; -webkit-user-select: text; } }
   ::selection { background: var(--selection); }
   .markdown { font-family: var(--font-content); font-size: 1rem; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
   .markdown > :first-child { margin-top: 0; }
