@@ -418,7 +418,7 @@ const styles = stylex.create({
   sidechatQuote: { margin: '0 0 14px', borderLeftWidth: 2, borderLeftStyle: 'solid', borderLeftColor: tokens.border, padding: '4px 12px', maxHeight: '25svh', overflowY: 'auto', color: tokens.muted, fontSize: '.875rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
   sidechatLabel: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '.875rem' },
   app: { display: 'flex', width: '100%', height: '100dvh', overflow: 'hidden', position: 'fixed', top: 0, left: 0, color: tokens.text, backgroundColor: tokens.canvas },
-  desktopSidebar: { width: 288, flexShrink: 0, height: '100%', borderRightWidth: 1, borderRightStyle: 'solid', borderRightColor: tokens.border, '@media (max-width: 820px)': { display: 'none' } },
+  desktopSidebar: { width: 'clamp(288px, 24vw, 440px)', flexShrink: 0, height: '100%', borderRightWidth: 1, borderRightStyle: 'solid', borderRightColor: tokens.border, '@media (max-width: 820px)': { display: 'none' } },
   main: { display: 'flex', flexDirection: 'column', position: 'relative', height: '100%', minHeight: 0, minWidth: 0, flex: 1 },
   header: { position: 'absolute', top: 0, left: 0, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 68, padding: 'calc(12px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 12px max(18px, env(safe-area-inset-left))', backgroundImage: 'linear-gradient(to bottom, var(--canvas), color-mix(in srgb, var(--canvas) 80%, transparent) 60%, transparent)', backdropFilter: 'blur(10px)', zIndex: 3, pointerEvents: 'none' },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 },
