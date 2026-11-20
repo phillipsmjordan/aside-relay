@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { Mic, Pencil, Send, Square, Volume2, X } from 'lucide-react';
 import type { ChatMessage, UseChat } from './types';
 import type { SessionWorkspaceState } from './SessionWorkspace';
-import { Button } from './Button';
 import { IconButton, ICON_STROKE } from './ui';
 import { tokens } from './tokens.stylex';
 import { extractSpeak, isFatalListenError, listenErrorMessage, matchOption, matchVerdict, parseVoiceIntent, setVoiceNoteOn, speakableText, splitHead, suspensionSpeech } from './speech';
@@ -446,35 +445,53 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
 
 export type VoiceMode = ReturnType<typeof useVoiceMode>;
 
-export function VoiceBar({ voice }: { voice: VoiceMode }) {
-  if (!voice.isOn) return null;
+/** Full status sentence (also read by screen readers). */
+export function voiceStatus(voice: VoiceMode) {
   const { phase } = voice;
-  const status = phase === 'paused' ? 'Voice mode is on · tap Resume'
+  return phase === 'paused' ? 'Voice mode is on · tap Resume'
     : phase === 'speaking' ? 'Reading aloud…'
     : phase === 'listening' ? 'Listening…'
     : phase === 'confirming' ? `${voice.pending?.label ?? 'Sending'} in ${voice.countdown}…`
     : phase === 'sending' ? 'Sending…'
     : !voice.hasChat ? 'Voice mode · open a chat to talk'
     : voice.isRunning && !voice.hasQuestion ? 'Voice mode · waiting for the reply' : voice.isListenBroken ? 'Voice mode · reading aloud only (mic unavailable) · tap Talk to retry' : 'Voice mode · tap Talk to speak';
-  const detail = phase === 'listening' ? voice.heard : phase === 'confirming' ? voice.pending?.detail : '';
-  return <div role="region" aria-label="Voice mode" {...stylex.props(styles.wrap)}>
-    <div {...stylex.props(styles.bar)}>
-      <div {...stylex.props(styles.text)}>
-        <span role="status" aria-live="polite" {...stylex.props(styles.status, (phase === 'listening' || phase === 'speaking') && styles.active)}>{status}</span>
-        {detail ? <span {...stylex.props(styles.detail)}>“{detail}”</span> : null}
-      </div>
-      <div {...stylex.props(styles.actions)}>
-        {phase === 'confirming' ? <>
-          {voice.pending?.editText !== undefined && <IconButton label="Edit before sending" onClick={voice.edit}><Pencil size={18} strokeWidth={ICON_STROKE} /></IconButton>}
-          <Button size="compact" onClick={voice.cancelPending}>Cancel</Button>
-          <Button size="compact" variant="primary" onClick={voice.sendNow}><Send size={15} aria-hidden="true" />Now</Button>
-        </> : phase === 'speaking' || phase === 'listening' ? <Button size="compact" onClick={voice.stop}><Square size={14} aria-hidden="true" />Stop</Button>
-          : phase === 'paused' ? <Button size="compact" variant="primary" onClick={voice.resume}><Volume2 size={15} aria-hidden="true" />Resume</Button>
-          : phase === 'idle' && voice.hasChat ? <Button size="compact" variant="primary" onClick={voice.talk}><Mic size={15} aria-hidden="true" />Talk</Button> : null}
-        <IconButton label="Turn off voice mode" onClick={voice.toggle}><X size={18} strokeWidth={ICON_STROKE} /></IconButton>
-      </div>
-    </div>
-  </div>;
+}
+
+/** Short version for the message box's placeholder. */
+export function voicePlaceholder(voice: VoiceMode) {
+  const { phase } = voice;
+  return phase === 'paused' ? 'Voice on · tap Resume'
+    : phase === 'speaking' ? 'Reading aloud…'
+    : phase === 'listening' ? 'Listening…'
+    : phase === 'confirming' ? `${voice.pending?.label ?? 'Sending'} in ${voice.countdown}…`
+    : phase === 'sending' ? 'Sending…'
+    : !voice.hasChat ? 'Voice on · open a chat'
+    : voice.isRunning && !voice.hasQuestion ? 'Voice on · waiting for the reply' : voice.isListenBroken ? 'Voice on · mic unavailable' : 'Voice on · tap the mic to talk';
+}
+
+/** What was heard, or what is about to be sent. Shown as a thin line inside the message box. */
+export function voiceCaption(voice: VoiceMode) {
+  return voice.phase === 'listening' ? voice.heard : voice.phase === 'confirming' ? voice.pending?.detail ?? '' : '';
+}
+
+/** Talk, Resume, Stop and confirm buttons that sit inside the message box next to Send. */
+export function VoiceControls({ voice }: { voice: VoiceMode }) {
+  const { phase } = voice;
+  if (!voice.isOn) return null;
+  return <>
+    <span role="status" aria-live="polite" {...stylex.props(styles.hidden)}>{voiceStatus(voice)}</span>
+    {phase === 'confirming' ? <>
+      {voice.pending?.editText !== undefined && <VoiceButton label="Edit before sending" onClick={voice.edit}><Pencil size={17} strokeWidth={ICON_STROKE} aria-hidden="true" /></VoiceButton>}
+      <VoiceButton label="Cancel" onClick={voice.cancelPending}><X size={18} strokeWidth={ICON_STROKE} aria-hidden="true" /></VoiceButton>
+      <VoiceButton label="Send now" isPrimary onClick={voice.sendNow}><Send size={17} strokeWidth={ICON_STROKE} aria-hidden="true" /></VoiceButton>
+    </> : phase === 'speaking' || phase === 'listening' ? <VoiceButton label="Stop" isPrimary isActive onClick={voice.stop}><Square size={15} aria-hidden="true" /></VoiceButton>
+      : phase === 'paused' ? <VoiceButton label="Resume" isPrimary onClick={voice.resume}><Volume2 size={18} strokeWidth={ICON_STROKE} aria-hidden="true" /></VoiceButton>
+      : phase === 'idle' && voice.hasChat ? <VoiceButton label="Talk" isPrimary onClick={voice.talk}><Mic size={18} strokeWidth={ICON_STROKE} aria-hidden="true" /></VoiceButton> : null}
+  </>;
+}
+
+function VoiceButton({ label, isPrimary = false, isActive = false, onClick, children }: { label: string; isPrimary?: boolean; isActive?: boolean; onClick: () => void; children: ReactNode }) {
+  return <button type="button" aria-label={label} title={label} aria-pressed={isActive || undefined} {...stylex.props(styles.button, isPrimary && styles.buttonPrimary)} onClick={onClick}>{children}</button>;
 }
 
 export function ReadAloudButton({ id, text: rawText }: { id: string; text: string }) {
@@ -489,11 +506,7 @@ export function ReadAloudButton({ id, text: rawText }: { id: string; text: strin
 }
 
 const styles = stylex.create({
-  wrap: { position: 'absolute', zIndex: 8, left: 'max(16px, env(safe-area-inset-left))', right: 'max(16px, env(safe-area-inset-right))', bottom: 'calc(var(--composer-height, 76px) + var(--workspace-height, 0px) + 8px)', display: 'flex', justifyContent: 'center', pointerEvents: 'none' },
-  bar: { display: 'flex', alignItems: 'center', gap: 8, width: 'min(100%, 520px)', minHeight: 48, padding: '6px 6px 6px 14px', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.primary, borderRadius: 16, backgroundColor: tokens.surface, color: tokens.text, boxShadow: tokens.glassShadow, pointerEvents: 'auto' },
-  text: { display: 'flex', flexDirection: 'column', minWidth: 0, flexGrow: 1, gap: 2 },
-  status: { fontSize: '0.8125rem', fontWeight: 600, color: tokens.muted },
-  active: { color: tokens.primary },
-  detail: { fontSize: '0.875rem', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' },
-  actions: { display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 },
+  hidden: { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', borderWidth: 0 },
+  button: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, borderWidth: 0, borderRadius: '50%', backgroundColor: 'transparent', color: tokens.muted, cursor: 'pointer' },
+  buttonPrimary: { backgroundColor: tokens.primary, color: tokens.primaryForeground },
 });
