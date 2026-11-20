@@ -213,12 +213,12 @@ export function useVoiceMode({ chat, suspension, notify, onEdit, onOpenSession }
     if (!isRepeat) { spokenRef.current.add(reply.key); spokenRef.current.add(reply.text); lastReplyRef.current = reply.text; }
     const { display, spoken } = extractSpeak(reply.text);
     const full = speakableText(display);
-    // A <speak> summary is read first; the full reply is offered afterwards. Without one, read the opening and offer the rest.
-    const { head, rest } = spoken ? { head: spoken, rest: full.length > spoken.length * 1.5 ? full : '' } : splitHead(full);
+    // A <speak> summary is all that is read. Without one, read the opening and offer the rest.
+    const { head, rest } = spoken ? { head: spoken, rest: '' } : splitHead(full);
     setPhase('speaking');
     if (!await speak(VOICE_KEY, head, { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
     if (rest) {
-      if (!await speak(VOICE_KEY, spoken ? 'Want the full reply?' : 'Want the rest?', { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
+      if (!await speak(VOICE_KEY, 'Want the rest?', { isMarkdown: false }) || !isCurrent(run)) { if (isCurrent(run)) setPhase('idle'); return; }
       const answer = await listenOnce(run);
       if (!isCurrent(run)) return;
       const intent = parseVoiceIntent(answer.transcript);
