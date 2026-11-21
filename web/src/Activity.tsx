@@ -1,3 +1,5 @@
+import { DiffView } from './DiffView';
+import { looksLikeDiff } from './diff';
 import * as stylex from '@stylexjs/stylex';
 import { ChevronDown, ChevronRight, CodeXml, ExternalLink, File, FilePenLine, Globe, History, ListTodo, NotebookPen, Search, Terminal } from 'lucide-react';
 import type { ChatMessage, ToolCallBlock } from './types';
@@ -96,7 +98,7 @@ function Action({ call, result, onZoom, isExpanded, onExpandedChange, onOpenSess
       {isExpanded && <>{name && <span {...stylex.props(styles.label)}>Tool · {name}</span>}
       {hasInput && <><span {...stylex.props(styles.label)}>Input</span><pre {...stylex.props(styles.output)}>{JSON.stringify(input, undefined, 2)}</pre></>}
       {typeof args?.code === 'string' && <><span {...stylex.props(styles.label)}>Code</span><pre {...stylex.props(styles.output)}>{args.code}</pre></>}
-      {rawOutput && <><span {...stylex.props(styles.label)}>Result</span><pre {...stylex.props(styles.output)}>{rawOutput}</pre></>}</>}
+      {rawOutput && <><span {...stylex.props(styles.label)}>Result</span>{looksLikeDiff(rawOutput) ? <DiffView source={rawOutput} variant="tool" /> : <pre {...stylex.props(styles.output)}>{rawOutput}</pre>}</>}</>}
     </details>}
   </section>;
 

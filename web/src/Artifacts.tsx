@@ -1,3 +1,5 @@
+import { DiffView } from './DiffView';
+import { looksLikeDiff } from './diff';
 import { isRecord } from './responses';
 import { formatBytes } from './format';
 import type { UseChat } from './types';
@@ -98,7 +100,7 @@ export function Artifacts({ sessionId, request, notify, onClose, onZoom }: {
         {selected.kind === 'image' && (onZoom ? <button type="button" aria-label={`Open ${selected.name}`} {...stylex.props(styles.mediaButton)} onClick={() => onZoom(selectedUrl!)}><img src={selectedUrl} alt={selected.name} {...stylex.props(styles.media)} /></button> : <img src={selectedUrl} alt={selected.name} {...stylex.props(styles.media)} />)}
         {selected.kind === 'pdf' && <iframe src={selectedUrl} title={selected.name} {...stylex.props(styles.frame)} />}
         {selected.kind === 'html' && <iframe src={selectedUrl} title={selected.name} sandbox="" {...stylex.props(styles.frame)} />}
-        {selected.kind === 'text' && (previewError ? <PreviewError message={previewError} onRetry={() => setPreviewRevision(value => value + 1)} /> : <pre {...stylex.props(styles.code)}>{textPreview ?? 'Loading preview…'}</pre>)}
+        {selected.kind === 'text' && (previewError ? <PreviewError message={previewError} onRetry={() => setPreviewRevision(value => value + 1)} /> : textPreview !== undefined && (/\.(?:diff|patch)$/i.test(selected.name) || looksLikeDiff(textPreview)) ? <div {...stylex.props(styles.diff)}><DiffView source={textPreview} assumeDiff={/\.(?:diff|patch)$/i.test(selected.name)} /></div> : <pre {...stylex.props(styles.code)}>{textPreview ?? 'Loading preview…'}</pre>)}
         {selected.kind === 'csv' && (previewError ? <PreviewError message={previewError} onRetry={() => setPreviewRevision(value => value + 1)} /> : <CsvPreview content={textPreview} />)}
         {selected.kind === 'binary' && <div {...stylex.props(styles.emptyPreview)}><File size={36} /><p {...stylex.props(styles.emptyText)}>This file cannot be previewed here.</p><a href={`${selectedUrl}?download=true`} download={selected.name} {...stylex.props(styles.emptyLink)}>Download file</a></div>}
       </> : <div {...stylex.props(styles.emptyPreview)}><FileText size={36} /><p {...stylex.props(styles.emptyText)}>Select a file to preview it.</p></div>}</div>
@@ -168,6 +170,7 @@ const styles = stylex.create({
   media: { width: '100%', height: '100%', minHeight: 0, objectFit: 'contain' },
   mediaButton: { display: 'block', flex: 1, minHeight: 0, width: '100%', padding: 0, overflow: 'hidden', borderWidth: 0, backgroundColor: 'transparent' },
   frame: { width: '100%', flex: 1, minHeight: 300, borderWidth: 0, backgroundColor: '#fff' },
+  diff: { flex: 1, minHeight: 0, overflow: 'auto', padding: '0 10px' },
   code: { flex: 1, minHeight: 0, margin: 0, padding: 14, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-code)', fontSize: '.75rem', lineHeight: 1.45, color: tokens.text },
   tableWrap: { flex: 1, minHeight: 0, overflow: 'auto' },
   table: { borderCollapse: 'collapse', minWidth: '100%', color: tokens.text, fontFamily: 'var(--font-code)', fontSize: '.75rem' },

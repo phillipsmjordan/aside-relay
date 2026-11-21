@@ -1,3 +1,4 @@
+import unittest
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -175,3 +176,12 @@ class FilesSecurityTest(support.IsolatedBackendTest):
 if __name__ == "__main__":
     import unittest
     unittest.main()
+
+
+class DiffArtifactKindTest(unittest.TestCase):
+    def test_diff_and_patch_files_preview_as_text(self):
+        import native_files
+        from pathlib import Path
+        for name in ("change.diff", "fix.patch"):
+            path = Path(name)
+            self.assertEqual(native_files._kind(path, native_files._mime(path)), "text")

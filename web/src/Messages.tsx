@@ -6,6 +6,8 @@ import * as stylex from '@stylexjs/stylex';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { DiffView } from './DiffView';
+import { looksLikeDiff } from './diff';
 import rehypeHighlight from 'rehype-highlight';
 import { Copy, Check, Code2, FileText } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
@@ -59,6 +61,8 @@ function CodeBlock({ children, notify, isIncomplete, onAction }: { children: Rea
   const child = Children.toArray(children)[0];
   const language = typeof child === 'object' && 'props' in child ? (child.props as { className?: string }).className?.match(/language-(\S+)/)?.[1] : undefined;
   if (language === 'mermaid') return <Diagram source={code} notify={notify} />;
+  if (language === 'diff' || language === 'patch' || language === 'udiff') return <DiffView source={code} assumeDiff isStreaming={isIncomplete} notify={notify} />;
+  if ((!language || language === 'text' || language === 'plaintext' || language === 'console' || language === 'bash' || language === 'shell') && looksLikeDiff(code)) return <DiffView source={code} isStreaming={isIncomplete} notify={notify} />;
   if (language && DRAFT_LANGUAGES.has(language)) {
     if (isIncomplete) return <div {...stylex.props(styles.code)}><div {...stylex.props(styles.codeHeader)}><span>Writing draft…</span></div></div>;
     const data = parseDraft(code);

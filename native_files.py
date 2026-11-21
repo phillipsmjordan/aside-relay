@@ -22,7 +22,7 @@ _BLOCKED_NAMES = {
 }
 _BLOCKED_SUFFIXES = {".key", ".pem", ".p12", ".pfx"}
 _TEXT_SUFFIXES = {
-    ".c", ".cc", ".conf", ".cpp", ".css", ".csv", ".go", ".h", ".hpp",
+    ".c", ".cc", ".conf", ".cpp", ".css", ".csv", ".diff", ".go", ".h", ".hpp", ".patch",
     ".html", ".ini", ".java", ".js", ".json", ".jsx", ".kt", ".log", ".md",
     ".mjs", ".py", ".rb", ".rs", ".sh", ".sql", ".svg", ".toml", ".ts",
     ".tsx", ".txt", ".xml", ".yaml", ".yml",
