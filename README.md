@@ -15,7 +15,14 @@
 > - Hands-free voice mode (headphones icon): reads replies, asks "Want the rest?", listens for your answer, confirms before sending, and can answer questions and approvals by voice.
 > - Voice mode stays on across chats, announces other chats that finish, fail or ask a question, and resumes (paused) after a reload.
 > - Settings, Read aloud: pick a voice and speed per device, with a Test voice button. Automatic uses the phone's own text-to-speech voice in its language (for example en-US), not the first English voice found.
+>>
+> **Interview mode**
+> - Brain button in the header, per chat and off by default. While it is on, the agent must ask what it needs through question cards, one question at a time, before it answers.
+> - If a reply ends without a question, the relay sends one reminder on its own. The agent can answer directly by opening with "No questions needed." (hidden in the relay).
 >
+> **Diffs**
+> - Diff blocks, `git diff` output and `.diff` / `.patch` files open in a diff viewer: one card per file, line numbers, word-level changes, syntax colours, split view on wide screens and full screen with a file list.
+
 > **Fixes**
 > - Respond dialog closes and the question disappears right after you answer it.
 > - Works with the current Aside CLI: reads its JSON `session list` output and passes `--yes` to `session delete`, so deleting chats and running status work again.
