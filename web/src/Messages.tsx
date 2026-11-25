@@ -1,4 +1,4 @@
-import { Children, createContext, forwardRef, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Children, createContext, forwardRef, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { HTMLAttributes, ReactNode, RefObject } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import type { VirtuosoHandle } from 'react-virtuoso';
@@ -9,13 +9,14 @@ import remarkGfm from 'remark-gfm';
 import { DiffView } from './DiffView';
 import { looksLikeDiff } from './diff';
 import rehypeHighlight from 'rehype-highlight';
-import { Copy, Check, Code2, FileText } from 'lucide-react';
+import { Copy, Check, Code2, FileText, Brain } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ChatMessage, UseChat } from './types';
 import { tokens } from './tokens.stylex';
 import { CITATION_TITLE_PREFIX, formatCitations } from './citations';
 import { ICON_STROKE, IconButton, styles as ui } from './ui';
 import { extractSpeak, stripVoiceNote } from './speech';
+import { isInterviewOn, isInterviewReminder, stripNoQuestions, subscribeInterview } from './interview';
 import { VISUAL_MESSAGE_PREFIX, visualDocument, visualTheme } from './visual';
 import { Activity } from './Activity';
 import { useMessageMenu } from './useMessageMenu';
@@ -129,6 +130,8 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   isSuspended?: boolean;
 }) {
   const { messages, pendingPrompt, liveAssistant, isRunning } = chat;
+  const interview = useSyncExternalStore(subscribeInterview, () => isInterviewOn(chat.sessionId), () => false);
+  const shown = (text: string) => interview ? stripNoQuestions(text) : text;
   const [isNavigatingTurns, setNavigatingTurns] = useState(false);
   const shouldReduceMotion = useReducedMotion();
   const lastConversationMessage = [...messages].reverse().find(message => message.role === 'assistant' || message.role === 'user');
@@ -136,10 +139,10 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   const sources = [...new Map(messages.flatMap(message => message.sources ?? []).map(source => [source.id, source])).values()];
   const messageById = new Map(messages.map(message => [String(message.seq), message]));
   const { handlers, menu, selectableId } = useMessageMenu({ textForMessage: id => {
-    if (liveAssistant?.streamId === id) return formatCitations({ text: extractSpeak(liveAssistant.text).display, sources, isStreaming: !liveAssistant.done });
+    if (liveAssistant?.streamId === id) return formatCitations({ text: shown(extractSpeak(liveAssistant.text).display), sources, isStreaming: !liveAssistant.done });
     const message = messageById.get(id);
     if (!message) return '';
-    return message.role === 'user' ? stripVoiceNote(messageText(message)).replace(attachmentPrompt, '') : formatCitations({ text: extractSpeak(messageText(message)).display, sources });
+    return message.role === 'user' ? stripVoiceNote(messageText(message)).replace(attachmentPrompt, '') : formatCitations({ text: shown(extractSpeak(messageText(message)).display), sources });
   }, notify, sessionId: chat.sessionId, request: chat.request, onOpenSession,
     onRefreshMessages: async () => { await chat.refreshMessages(); }, onComposeContext, onAskSidechat,
     onNavigateTurns: () => setNavigatingTurns(true) });
@@ -211,7 +214,7 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
   function renderGroup(group: typeof groups[number]) {
     if (group.kind === 'activity') return <Activity messages={group.messages} results={results} onZoom={onZoom} expanded={expanded} onExpandedChange={changeExpanded} onOpenSession={onOpenSession} agentIds={agentIds} />;
     if (group.kind === 'pending') return <article aria-label="Sending message" {...stylex.props(styles.message, styles.user)}>{chat.pendingAttachments.map(attachment => attachment.mime.startsWith('image/') ? <img key={attachment.id} src={attachment.url} alt={attachment.name} {...stylex.props(styles.image)} /> : <a key={attachment.id} href={attachment.url} target="_blank" rel="noopener noreferrer" {...stylex.props(styles.fileAttachment)}><FileText size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>{attachment.name}</span></a>)}<div {...stylex.props(styles.userText)}>{pendingPrompt}</div></article>;
-    if (group.kind === 'live' && liveAssistant) return <article data-message-id={liveAssistant.streamId} data-message-role="assistant" data-selectable={selectableId === liveAssistant.streamId} tabIndex={0} aria-haspopup="menu" aria-keyshortcuts="Shift+F10" aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)}><ResponseMarkdown text={formatCitations({ text: extractSpeak(liveAssistant.text).display, sources, isStreaming: !liveAssistant.done })} sessionId={chat.sessionId} isStreaming={!liveAssistant.done} notify={notify} onZoom={onZoom} onAction={liveAssistant.done ? onDraftAction : undefined} /></article>;
+    if (group.kind === 'live' && liveAssistant) return <article data-message-id={liveAssistant.streamId} data-message-role="assistant" data-selectable={selectableId === liveAssistant.streamId} tabIndex={0} aria-haspopup="menu" aria-keyshortcuts="Shift+F10" aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)}><ResponseMarkdown text={formatCitations({ text: shown(extractSpeak(liveAssistant.text).display), sources, isStreaming: !liveAssistant.done })} sessionId={chat.sessionId} isStreaming={!liveAssistant.done} notify={notify} onZoom={onZoom} onAction={liveAssistant.done ? onDraftAction : undefined} /></article>;
     if (group.kind === 'working') return <div role="status" aria-label="Working" {...stylex.props(styles.working)}><motion.span {...stylex.props(styles.pulse)} animate={{ opacity: shouldReduceMotion ? 1 : [.4, 1, .4] }} transition={{ duration: 1.2, repeat: shouldReduceMotion ? 0 : Infinity }} />Working…</div>;
     if (group.kind === 'waiting') return <div role="status" aria-label="Waiting for your answer" {...stylex.props(styles.working)}>Waiting for your answer…</div>;
     if (group.kind === 'queue') {
@@ -221,13 +224,14 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom, onOp
     if (group.kind === 'paused') return <div role="status" {...stylex.props(styles.working)}>Queue paused<Button disabled={chat.isUpdatingQueue} onClick={() => { void chat.resumeQueue(); }}>Resume</Button></div>;
     if (group.kind !== 'message') return;
     const message = group.message;
-    const raw = message.role === 'user' ? stripVoiceNote(messageText(message)) : extractSpeak(messageText(message)).display;
+    const raw = message.role === 'user' ? stripVoiceNote(messageText(message)) : shown(extractSpeak(messageText(message)).display);
     const attachmentMatch = raw.match(attachmentPrompt);
     const text = message.role === 'user' ? attachmentMatch ? raw.slice(attachmentMatch[0].length) : raw : formatCitations({ text: raw, sources });
+    const isReminder = message.role === 'user' && isInterviewReminder(text);
     const attachments = attachmentMatch ? attachmentMatch[1].trim().split('\n').flatMap(line => { const match = line.match(/^- (.*) → (.+\/([^/]+))$/); return match ? [{ name: match[1], src: '/api/upload/' + encodeURIComponent(match[3]) }] : []; }) : [];
-    return <article key={message.seq} data-message-id={message.seq} data-message-role={message.role} data-turn-index={groups.indexOf(group)} data-selectable={selectableId === String(message.seq)} tabIndex={text ? 0 : undefined} aria-haspopup={text ? 'menu' : undefined} aria-keyshortcuts={text ? 'Shift+F10' : undefined} aria-label={message.role === 'user' ? 'Your message' : 'Response'} {...stylex.props(styles.message, message.role === 'user' && styles.user)}>
+    return <article key={message.seq} data-message-id={message.seq} data-message-role={message.role} data-turn-index={groups.indexOf(group)} data-selectable={selectableId === String(message.seq)} tabIndex={text ? 0 : undefined} aria-haspopup={text ? 'menu' : undefined} aria-keyshortcuts={text ? 'Shift+F10' : undefined} aria-label={isReminder ? 'Automatic reminder' : message.role === 'user' ? 'Your message' : 'Response'} {...stylex.props(styles.message, message.role === 'user' && styles.user, isReminder && styles.reminder)}>
       {attachments.map(attachment => /\.(?:png|jpe?g|gif|webp|avif)$/i.test(attachment.src) ? <button key={attachment.src} {...stylex.props(styles.imageButton)} onClick={() => onZoom(attachment.src)}><img src={attachment.src} alt={attachment.name} {...stylex.props(styles.image)} /></button> : <a key={attachment.src} href={attachment.src} target="_blank" rel="noopener noreferrer" {...stylex.props(styles.fileAttachment)}><FileText size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>{attachment.name}</span></a>)}
-      {message.role === 'user' ? <div {...stylex.props(styles.userText)}>{text}</div> : <ResponseMarkdown text={text} sessionId={chat.sessionId} notify={notify} onZoom={onZoom} onAction={!liveAssistant?.text && message.seq === lastConversationMessage?.seq ? onDraftAction : undefined} />}
+      {message.role === 'user' ? <div {...stylex.props(styles.userText)}>{isReminder && <><Brain size={15} strokeWidth={ICON_STROKE} aria-hidden="true" /> </>}{text}</div> : <ResponseMarkdown text={text} sessionId={chat.sessionId} notify={notify} onZoom={onZoom} onAction={!liveAssistant?.text && message.seq === lastConversationMessage?.seq ? onDraftAction : undefined} />}
       {message.blocks.filter(block => block.type === 'image').map((block, index) => block.type === 'image' ? <button key={index} {...stylex.props(styles.imageButton)} onClick={() => onZoom('/api/media/' + block.mediaId)}><img src={'/api/media/' + block.mediaId} alt="Attachment" loading="lazy" {...stylex.props(styles.image)} /></button> : undefined)}
       {message.role === 'assistant' && turnEnds.has(message.seq) && <div {...stylex.props(styles.replyActions)}><ReadAloudButton id={String(message.seq)} text={raw} /></div>}
     </article>;
@@ -265,6 +269,7 @@ const styles = stylex.create({
   message: { minWidth: 0, maxWidth: '100%', flexShrink: 0 },
   user: { alignSelf: 'flex-end', backgroundColor: tokens.bubble, borderRadius: 24, padding: '12px 18px', maxWidth: '88%', fontSize: '1rem', lineHeight: 1.55 },
   userText: { fontFamily: 'var(--font-content)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
+  reminder: { alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 2, maxWidth: '100%', padding: '7px 14px', borderWidth: 1, borderStyle: 'dashed', borderColor: tokens.border, backgroundColor: 'transparent', color: tokens.muted, fontSize: '0.8125rem', lineHeight: 1.4 },
   citation: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 24, minHeight: 24, padding: '0 7px', margin: '0 2px', borderRadius: 12, backgroundColor: { default: tokens.surface, ':hover': tokens.hover }, color: tokens.muted, fontSize: '0.6875rem', fontWeight: 600, lineHeight: 1.3, textDecoration: 'none', verticalAlign: 'middle' },
   code: { minWidth: 0, maxWidth: '100%', borderRadius: 16, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, overflow: 'hidden', marginTop: 16, marginBottom: 20, backgroundColor: tokens.surface },
   codeHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px 2px 16px', borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.border, fontSize: '0.75rem', color: tokens.muted },

@@ -1,9 +1,9 @@
 import { APP_NAME } from './brand';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowDown, AudioLines, Check, CircleAlert, Ellipsis, Menu, SquarePen, X } from 'lucide-react';
+import { ArrowDown, AudioLines, Check, CircleAlert, Ellipsis, Menu, Brain, SquarePen, X } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion, usePresence, useReducedMotion } from 'motion/react';
 import { useChat } from './chat';
 import { isRecord } from './responses';
@@ -24,6 +24,8 @@ import { SessionWorkspace, type SessionWorkspaceState } from './SessionWorkspace
 import { DiffFullscreenHost } from './DiffView';
 import { isVoiceSupported, useVoiceMode } from './VoiceMode';
 import { RenameConversation, SessionMenu, type SessionMenuTarget } from './SessionMenu';
+import { isInterviewOn, setInterviewOn, subscribeInterview } from './interview';
+import { useInterviewEnforcer } from './useInterview';
 import { applyTheme, loadThemeMode, resolveTheme, loadAppearance, APPEARANCE_STORAGE_KEY, type Appearance, type ThemeMode, THEME_STORAGE_KEY, applyTextSize, loadTextSize, TEXT_SIZE_STORAGE_KEY, type Theme } from './theme';
 import { ICON_STROKE, SESSION_MENU_LABEL, DELETE_CONVERSATION_TITLE, OPEN_DIALOG_SELECTOR, Sheet, DialogBackdropReset, IconButton, focusDialogSurface, resolveDialogReturnFocus, trapDialogFocus, styles as ui } from './ui';
 
@@ -104,6 +106,12 @@ export function App() {
   }, []);
   const notifications = usePushNotifications(chat, notify);
   const openSessionRef = useRef<(id: string) => void>(() => undefined);
+  const interviewOn = useSyncExternalStore(subscribeInterview, () => isInterviewOn(chat.sessionId), () => false);
+  useInterviewEnforcer(chat);
+  function toggleInterview() {
+    setInterviewOn(chat.sessionId, !interviewOn);
+    if (!interviewOn) notify('Interview mode on. Replies come as questions, one at a time.');
+  }
   const voice = useVoiceMode({ chat, suspension: workspaceState?.sessionId === chat.sessionId ? workspaceState?.suspension : undefined, notify, onEdit: text => { setDraft(text); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#draft')?.focus({ preventScroll: true })); }, onOpenSession: id => openSessionRef.current(id) });
   const dismissToast = useCallback((id: string) => { chat.dismissToast(id); setLocalToasts(current => current.filter(toast => toast.id !== id)); }, [chat.dismissToast]);
   function changeTextSize(size: number) {
@@ -327,7 +335,8 @@ export function App() {
       <div className="sr-only" role="status" aria-atomic="true">{announcement}</div>
       <header ref={headerRef} id="header" {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><Menu size={24} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{runOptions?.mode === 'incognito' && !chat.sessionId ? 'Incognito' : workspaceState && workspaceState.sessionId === chat.sessionId && workspaceState.suspension ? workspaceState.suspension.title : chat.isRunning ? `${subtitleBase} · Working…` : workspaceState?.sessionId === chat.sessionId && workspaceState?.status === 'errored' ? `${subtitleBase} · Task failed` : subtitleBase}</span></div></div>
-        <div {...stylex.props(ui.glass, styles.headerActions)}>{isVoiceSupported && (chat.sessionId || voice.isOn) && !chat.authError && <IconButton label={voice.isOn ? 'Turn off voice mode' : 'Turn on voice mode'} aria-pressed={voice.isOn} style={{ height: 40 }} disabled={!chat.isReady || chat.isOpening} onClick={voice.toggle}><AudioLines size={22} strokeWidth={ICON_STROKE} aria-hidden="true" {...stylex.props(voice.isOn && styles.voiceOn)} /></IconButton>}<IconButton label="New chat" style={{ height: 40 }} onClick={() => newChat()}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
+        <div {...stylex.props(ui.glass, styles.headerActions)}>{!chat.authError && <IconButton label={interviewOn ? 'Turn off interview mode' : 'Turn on interview mode'} aria-pressed={interviewOn} style={{ height: 40 }} disabled={!chat.isReady || chat.isOpening} onClick={toggleInterview}><Brain size={22} strokeWidth={ICON_STROKE} aria-hidden="true" {...stylex.props(interviewOn && styles.voiceOn)} /></IconButton>}
+        {isVoiceSupported && (chat.sessionId || voice.isOn) && !chat.authError && <IconButton label={voice.isOn ? 'Turn off voice mode' : 'Turn on voice mode'} aria-pressed={voice.isOn} style={{ height: 40 }} disabled={!chat.isReady || chat.isOpening} onClick={voice.toggle}><AudioLines size={22} strokeWidth={ICON_STROKE} aria-hidden="true" {...stylex.props(voice.isOn && styles.voiceOn)} /></IconButton>}<IconButton label="New chat" style={{ height: 40 }} onClick={() => newChat()}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
       </header>
       {chat.authError && <div role="alert" {...stylex.props(styles.notice)}><span>Connect to load your conversations.</span><button {...stylex.props(styles.noticeAction)} onClick={() => openPanel('settings')}>Settings</button></div>}
       {chat.isReady && !chat.isConnected && !chat.authError && <div role="status" {...stylex.props(styles.connectionIndicator)}><span className="sr-only">Reconnecting…</span><motion.span aria-hidden="true" {...stylex.props(styles.connectionSpinner)} animate={shouldReduceMotion ? undefined : { rotate: 360 }} transition={{ duration: .8, repeat: Infinity, ease: 'linear' }} /></div>}

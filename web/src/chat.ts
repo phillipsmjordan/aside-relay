@@ -3,6 +3,7 @@ import { formatRequestError } from "./errors"
 import { useAutoRefresh } from "./useAutoRefresh"
 import { SESSION_CHANGE_EVENT } from "./ui"
 import { withVoiceNote } from "./speech"
+import { adoptInterviewSession, isInterviewOn, resetNewInterview, withInterviewNote } from "./interview.ts"
 import {
   isRecord,
   parseChatMessage,
@@ -39,6 +40,11 @@ const RUN_POLL_INTERVAL_MS = 6_000
 const SESSION_REFRESH_INTERVAL_MS = 5_000
 const QUEUE_REFRESH_INTERVAL_MS = 1_500
 const FOLLOWUP_REQUEST_TIMEOUT_MS = 60_000
+
+/** Adds the standing notes a message carries on the wire: the interview-mode instruction and the voice summary request. */
+function withPromptNotes(text: string, interview: boolean): string {
+  return withVoiceNote(interview ? withInterviewNote(text) : text)
+}
 const RUN_REQUEST_RECOVERY_INTERVAL_MS = 750
 const RUN_REQUEST_RECOVERY_MAX_ATTEMPTS = 48
 const MAX_STALE_STREAM_KEYS = 128
@@ -666,6 +672,7 @@ export const useChat = (): UseChat => {
     nextSeqRef.current = 0
     offsetRef.current = 0
     storeSessionSelection()
+    resetNewInterview()
     if (location.pathname !== "/") history.pushState({}, "", "/")
   }, [cancelPendingRequests, releaseQueueEdit, retireLiveAssistant, sendSocket])
 
@@ -708,6 +715,7 @@ export const useChat = (): UseChat => {
       if (!accepted.sessionId && sessionIdRef.current === undefined) {
         const generation = ++openGenerationRef.current
         sessionIdRef.current = acceptedSessionId
+        adoptInterviewSession(acceptedSessionId)
         setSessionId(acceptedSessionId)
         bindStartingQueue({ sessionId: acceptedSessionId, previousGeneration: accepted.generation, generation })
         storeSessionSelection(acceptedSessionId)
@@ -1079,11 +1087,11 @@ export const useChat = (): UseChat => {
   }, [fetchMessages, handleSocketMessage, recoverPendingRequest, subscribe])
 
   const send = useCallback(
-    async (prompt: string, attachments: UploadAttachment[] = [], model?: ModelConfig, options?: RunOptions) => {
+    async (prompt: string, attachments: UploadAttachment[] = [], model?: ModelConfig, options?: RunOptions, withoutNotes?: boolean) => {
       const text = prompt.trim()
       if (!text && attachments.length === 0) return false
-      const wireText = text ? withVoiceNote(text) : text
       const selectedSessionId = sessionIdRef.current
+      const wireText = text && !withoutNotes ? withPromptNotes(text, isInterviewOn(selectedSessionId)) : text
       if (activeSendRef.current) return false
       const generation = openGenerationRef.current
       const requestId = createRequestId()
@@ -1145,6 +1153,7 @@ export const useChat = (): UseChat => {
           }
           if (!selectedSessionId) {
             sessionIdRef.current = result.sessionId
+            adoptInterviewSession(result.sessionId)
             setSessionId(result.sessionId)
             bindStartingQueue({ sessionId: result.sessionId, previousGeneration: generation, generation })
             storeSessionSelection(result.sessionId)
@@ -1251,7 +1260,7 @@ export const useChat = (): UseChat => {
     const id = followupRequestRef.current.id
     followupRequestRef.current = undefined
     const accepted = await mutateQueue({
-      suffix: "followups", method: "POST", body: { id, prompt: prompt.trim() ? withVoiceNote(prompt.trim()) : prompt.trim(), attachments: payloadAttachments, delivery: shouldSteer ? "steer" : "queue" },
+      suffix: "followups", method: "POST", body: { id, prompt: prompt.trim() ? withPromptNotes(prompt.trim(), isInterviewOn(sessionIdRef.current)) : prompt.trim(), attachments: payloadAttachments, delivery: shouldSteer ? "steer" : "queue" },
       update: state => ({ ...state, items: [...state.items.filter(item => item.id !== id), { id, prompt: prompt.trim(), attachments, status: "queued" }] }),
     })
     if (!accepted) followupRequestRef.current = { key: JSON.stringify({ sessionId: sessionIdRef.current, prompt, attachments: payloadAttachments, shouldSteer }), id }
@@ -1261,7 +1270,7 @@ export const useChat = (): UseChat => {
   const editQueuedMessage = useCallback(async (id: string, prompt: string, attachments?: UploadAttachment[]) => {
     const accepted = await mutateQueue({
       suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH",
-      body: { prompt: prompt.trim(), isEditing: false, ...(attachments ? { attachments: attachments.map(({ id, name }) => ({ id, name })) } : {}) },
+      body: { prompt: withPromptNotes(prompt.trim(), isInterviewOn(sessionIdRef.current)), isEditing: false, ...(attachments ? { attachments: attachments.map(({ id, name }) => ({ id, name })) } : {}) },
       update: state => ({ ...state, items: state.items.map(item => item.id === id ? { ...item, prompt: prompt.trim(), isEditing: false, status: "queued", error: undefined, ...(attachments ? { attachments } : {}) } : item) }),
     })
     if (accepted && heldQueueEditRef.current?.id === id) heldQueueEditRef.current = undefined

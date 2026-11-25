@@ -152,7 +152,8 @@ export type UseChat = {
   loadMore: () => Promise<void>
   openSession: (sessionId: string) => Promise<boolean>
   newChat: () => void
-  send: (prompt: string, attachments?: UploadAttachment[], model?: ModelConfig, options?: RunOptions) => Promise<boolean>
+  /** withoutNotes sends the text exactly as given, with no interview or voice note attached. */
+  send: (prompt: string, attachments?: UploadAttachment[], model?: ModelConfig, options?: RunOptions, withoutNotes?: boolean) => Promise<boolean>
   queue: (prompt: string, attachments?: UploadAttachment[], shouldSteer?: boolean) => Promise<boolean>
   editQueuedMessage: (id: string, prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
   beginEditQueuedMessage: (id: string) => Promise<boolean>

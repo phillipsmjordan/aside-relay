@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowUp, FileText, Mic, Plus, Square, X } from 'lucide-react';
+import { ArrowUp, FileText, Brain, Mic, Plus, Square, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { tokens } from './tokens.stylex';
 import { ICON_STROKE, OPEN_DIALOG_SELECTOR, BrowserIcon, IconButton, styles as ui } from './ui';
@@ -11,6 +11,7 @@ import { ContextPicker, type ContextReference } from './ContextPicker';
 import { ContextMeter } from './ContextMeter';
 import { VoiceControls, voiceCaption, voicePlaceholder, type VoiceMode } from './VoiceMode';
 import type { ContextInfo } from './usage';
+import { isInterviewOn, setInterviewOn, subscribeInterview } from './interview';
 
 type Attachment = { key: string; preview?: string; name: string; mime: string; upload?: UploadAttachment; hasError?: boolean };
 type SpeechRecognitionResult = { 0?: { transcript?: string } };
@@ -29,6 +30,7 @@ export function Composer({ voice, chat, onBrowser, draft, setDraft, revision, no
   const footerRef = useRef<HTMLElement>(null);
   const modelSelection = useModelSelection(chat, notify);
   const shouldReduceMotion = useReducedMotion();
+  const interview = useSyncExternalStore(subscribeInterview, () => isInterviewOn(chat.sessionId), () => false);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | undefined>(undefined);
@@ -232,6 +234,7 @@ export function Composer({ voice, chat, onBrowser, draft, setDraft, revision, no
           <AnimatePresence initial={false} onExitComplete={flushPreviewRevokes}>{attachments.map(attachment => <AttachmentItem key={attachment.key} attachment={attachment} onPreviewUnmount={markSubmittedPreviewUnmounted} onRemove={() => { if (attachment.preview) pendingPreviewRevokesRef.current.push(attachment.preview); attachmentRef.current = attachmentRef.current.filter(item => item.key !== attachment.key); setAttachments(attachmentRef.current); }} />)}</AnimatePresence>
         </motion.div>}
       </AnimatePresence>
+      {interview && <p {...stylex.props(styles.modeNote)}><Brain size={15} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Interview on: it asks you one question at a time.</span><button type="button" {...stylex.props(styles.modeOff)} onClick={() => setInterviewOn(chat.sessionId, false)}>Off</button></p>}
       {voice?.isOn && voiceCaption(voice) && <p {...stylex.props(styles.voiceCaption)}>“{voiceCaption(voice)}”</p>}
       <div {...stylex.props(styles.inputActions)}><IconButton label="Add to message" aria-haspopup="dialog" style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => setAddingContext(true)}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>{speechRecognition && !voice?.isOn && <IconButton label={isDictating ? 'Stop dictation' : 'Dictate'} aria-pressed={isDictating} style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={toggleDictation}><Mic size={21} strokeWidth={ICON_STROKE} /></IconButton>}</div>
       <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : voice?.isOn ? voicePlaceholder(voice) : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input, isExpanded && styles.expandedInput)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
@@ -277,6 +280,8 @@ const styles = stylex.create({
   input: { display: 'block', width: '100%', resize: 'none', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, fontSize: '1rem', lineHeight: 1.5, minHeight: COMPACT_DRAFT_HEIGHT, maxHeight: MAX_DRAFT_HEIGHT, overflowY: 'auto', overflowWrap: 'anywhere', padding: '2px 4px', '::placeholder': { color: tokens.muted } },
   expandedInput: { order: -1, gridColumn: '1 / -1', minHeight: 44, padding: '8px 10px 12px' },
   browser: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 32, padding: '0 10px', borderRadius: 24, color: tokens.text, fontSize: '.6875rem', fontWeight: 500, pointerEvents: 'auto' },
+  modeNote: { gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 6, margin: 0, padding: '8px 14px 0', fontSize: '0.8125rem', lineHeight: 1.35, color: tokens.muted },
+  modeOff: { marginLeft: 'auto', padding: '2px 8px', borderWidth: 0, borderRadius: 10, backgroundColor: tokens.hover, color: tokens.text, fontSize: '0.8125rem', fontWeight: 500 },
   voiceCaption: { gridColumn: '1 / -1', margin: 0, padding: '6px 14px 0', fontSize: '0.8125rem', lineHeight: 1.35, color: tokens.muted, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' },
   inputActions: { display: 'flex', alignItems: 'center', gap: 0 },
   submitActions: { display: 'flex', gridColumn: 3, alignItems: 'center', gap: 4, minWidth: 0 },

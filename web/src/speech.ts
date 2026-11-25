@@ -1,4 +1,5 @@
 // Pure helpers for read-aloud and voice mode. No browser APIs here so they can be unit tested in Node.
+import { stripInterviewNote } from './interview.ts';
 
 export type SpokenQuestion = { prompt: string; title?: string; options: { label: string; description?: string }[]; allowsMultiple?: boolean };
 export type SpokenSuspension = { kind: 'approval' | 'action-confirmation' | 'ask-user-question'; title: string; message?: string; questions: SpokenQuestion[] };
@@ -221,9 +222,9 @@ export function withVoiceNote(prompt: string): string {
   return isVoiceNoteOn && !VOICE_NOTE.test(prompt) ? `${prompt}\n\n${VOICE_NOTE_TEXT}` : prompt;
 }
 
-/** Removes the request again for display. */
+/** Removes the standing notes again for display: the voice summary request and the interview-mode instruction. */
 export function stripVoiceNote(text: string): string {
-  return text.replace(VOICE_NOTE, '');
+  return stripInterviewNote(text.replace(VOICE_NOTE, ''));
 }
 
 /** Splits a reply into what to show and the <speak> summary to read, hiding a tag that is still streaming in.
